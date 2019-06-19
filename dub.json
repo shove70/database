@@ -1,0 +1,12 @@
+{
+	"authors": [
+		"Marcio Martins",
+		"Shove"
+	],
+	"name": "database",
+	"targetType": "library",
+	"license": "MIT License",
+	"copyright": "Copyright © 2015, Marcio Martins, Shove",
+	"targetName": "database",
+	"description": "Lightweight native MySQL/MariaDB & PostgreSQL driver"
+}

@@ -1,0 +1,5 @@
+/.editorconfig
+/.project
+/libdatabase.a
+/database.lib
+/.dub/
