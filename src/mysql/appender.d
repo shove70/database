@@ -1,5 +1,7 @@
 module mysql.appender;
 
+version(MYSQL):
+
 import std.datetime;
 import std.traits;
 import std.typecons;

@@ -1,5 +1,7 @@
 module mysql.connection;
 
+version(MYSQL):
+
 import std.algorithm;
 import std.array;
 import std.conv : to;

@@ -1,5 +1,7 @@
 module mysql.type;
 
+version(MYSQL):
+
 import std.algorithm;
 import std.array : appender;
 import std.conv : parse, to;

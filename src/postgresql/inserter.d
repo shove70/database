@@ -1,5 +1,7 @@
 module postgresql.inserter;
 
+version(POSTGRESQL):
+
 import std.array;
 import std.meta;
 import std.range;

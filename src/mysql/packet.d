@@ -1,5 +1,7 @@
 module mysql.packet;
 
+version(MYSQL):
+
 import std.algorithm;
 import std.traits;
 

@@ -1,5 +1,7 @@
 module mysql.protocol;
 
+version(MYSQL):
+
 enum CapabilityFlags : uint
 {
     CLIENT_LONG_PASSWORD                  = 0x00000001,  // Use the improved version of Old Password Authentication

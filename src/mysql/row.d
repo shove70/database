@@ -1,5 +1,7 @@
 module mysql.row;
 
+version(MYSQL):
+
 import std.algorithm;
 import std.datetime;
 import std.traits;

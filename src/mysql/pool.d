@@ -1,5 +1,7 @@
 module mysql.pool;
 
+version(MYSQL):
+
 import core.time;
 import core.thread;
 import std.stdio;

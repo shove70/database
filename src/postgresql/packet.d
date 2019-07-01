@@ -1,5 +1,7 @@
 module postgresql.packet;
 
+version(POSTGRESQL):
+
 import std.algorithm;
 import std.bitmanip;
 import std.traits;

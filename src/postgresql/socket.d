@@ -1,5 +1,7 @@
 module postgresql.socket;
 
+version(POSTGRESQL):
+
 import core.stdc.errno;
 
 import std.socket;

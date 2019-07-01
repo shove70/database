@@ -1,5 +1,7 @@
 module postgresql.protocol;
 
+version(POSTGRESQL):
+
 //https://www.postgresql.org/docs/10/static/protocol-message-formats.html
 enum OutputMessageType : ubyte
 {

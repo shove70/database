@@ -1,5 +1,7 @@
 module postgresql.row;
 
+version(POSTGRESQL):
+
 import std.algorithm;
 import std.datetime;
 import std.traits;

@@ -1,5 +1,7 @@
 module mysql.exception;
 
+version(MYSQL):
+
 class MySQLException : Exception
 {
     this(string msg, string file = __FILE__, size_t line = __LINE__) pure

@@ -1,5 +1,7 @@
 module postgresql;
 
+version(POSTGRESQL):
+
 public import postgresql.pool;
 public import postgresql.exception;
 public import postgresql.protocol;

@@ -1,5 +1,7 @@
 module postgresql.appender;
 
+version(POSTGRESQL):
+
 import std.conv;
 import std.datetime;
 import std.format;

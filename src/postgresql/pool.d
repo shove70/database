@@ -1,5 +1,7 @@
 module postgresql.pool;
 
+version(POSTGRESQL):
+
 import core.time;
 import core.thread;
 import std.stdio;

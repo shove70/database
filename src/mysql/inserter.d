@@ -1,5 +1,7 @@
 module mysql.inserter;
 
+version(MYSQL):
+
 import std.array;
 import std.meta;
 import std.range;

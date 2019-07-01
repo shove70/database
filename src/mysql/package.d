@@ -1,5 +1,7 @@
 module mysql;
 
+version(MYSQL):
+
 public import mysql.pool;
 public import mysql.exception;
 public import mysql.protocol;

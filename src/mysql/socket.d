@@ -1,5 +1,7 @@
 module mysql.socket;
 
+version(MYSQL):
+
 import core.stdc.errno;
 
 import std.socket;

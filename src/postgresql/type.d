@@ -1,5 +1,7 @@
 module postgresql.type;
 
+version(POSTGRESQL):
+
 import std.algorithm;
 import std.array : appender;
 import std.conv : parse, to;

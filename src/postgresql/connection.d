@@ -1,5 +1,7 @@
 module postgresql.connection;
 
+version(POSTGRESQL):
+
 import std.algorithm;
 import std.array;
 import std.conv : to;
