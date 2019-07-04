@@ -1,5 +1,6 @@
-/.editorconfig
 /.project
+/.dub/
+/dub.selections.json
 /libdatabase.a
 /database.lib
-/.dub/
+/.editorconfig
