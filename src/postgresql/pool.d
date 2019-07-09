@@ -144,6 +144,18 @@ class Pool
 
 private:
 
+    Connection createConnection() shared
+    {
+        try
+        {
+            return new Connection(_host, _user, _password, _database, _port, _options);
+        }
+        catch (Exception e)
+        {
+            return null;
+        }
+    }
+
     void createConnections(uint num) shared
     {
         for (int i; i < num; i++)
@@ -153,13 +165,12 @@ private:
                 break;
             }
 
-            _pool ~= cast(shared Connection)new Connection(
-                    this._host,
-                    this._user,
-                    this._password,
-                    this._database,
-                    this._port,
-                    this._options);
+            Connection conn = createConnection();
+
+            if (conn !is null)
+            {
+                _pool ~= cast(shared Connection)conn;
+            }
         }
     }
 
@@ -179,11 +190,6 @@ private:
 
             if (conn !is null)
             {
-                if (!testConnection(conn))
-                {
-                    conn = new Connection(_host, _user, _password, _database, _port, _options);
-                }
-
                 conn.busy = true;
                 (cast(Tid)req.tid).send(new shared ConnenctionHolder(cast(shared Connection)conn));
 
@@ -217,16 +223,13 @@ private:
             {
                 if (!testConnection(conn))
                 {
-                    conn = new Connection(
-                        this._host,
-                        this._user,
-                        this._password,
-                        this._database,
-                        this._port,
-                        this._options);
+                    conn = createConnection();
                 }
 
-                conn.busy = true;
+                if (conn !is null)
+                {
+                    conn.busy = true;
+                }
 
                 return conn;
             }

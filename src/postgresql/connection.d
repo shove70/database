@@ -10,6 +10,7 @@ import std.string;
 import std.traits;
 import std.uni : sicmp;
 import std.utf : decode, UseReplacementDchar;
+import std.format;
 
 import postgresql.exception;
 import postgresql.packet;

@@ -3,7 +3,8 @@
         "Marcio Martins",
         "Shove"
     ],
-    "configurations": [{
+    "configurations": [
+        {
             "name": "mysql",
             "versions": ["MYSQL"]
         },
@@ -13,10 +14,10 @@
         }
     ],
     "name": "database",
-    "targetType": "library",
     "license": "MIT License",
     "copyright": "Copyright © 2015, Marcio Martins, Shove",
     "targetName": "database",
+    "targetType": "library",
     "importPaths": [
         "src"
     ],
