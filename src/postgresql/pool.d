@@ -8,6 +8,8 @@ import std.stdio;
 import std.array;
 import std.concurrency;
 import std.datetime;
+import std.algorithm.searching : any;
+import std.algorithm.mutation : remove;
 
 import postgresql.connection;
 
@@ -176,26 +178,26 @@ private:
 
     void getConnection(shared RequestConnection req) shared
     {
-        auto start = Clock.currTime();
+        immutable start = Clock.currTime();
 
-        do
+        while (true)
         {
             Connection conn = getFreeConnection();
 
-            if (conn is null)
-            {
-                Thread.sleep(100.msecs);
-                conn = getFreeConnection();
-            }
-
             if (conn !is null)
             {
-                conn.busy = true;
                 (cast(Tid)req.tid).send(new shared ConnenctionHolder(cast(shared Connection)conn));
 
                 return;
             }
-        } while ((Clock.currTime() - start) < _waitTime);
+
+            if ((Clock.currTime() - start) >= _waitTime)
+            {
+                break;
+            }
+ 
+            Thread.sleep(100.msecs);
+        }
 
         (cast(Tid)req.tid).send(new immutable ConnectionBusy);
     }
@@ -215,27 +217,34 @@ private:
 
     Connection findFreeConnection() shared
     {
+        Connection result;
+
         for (size_t i = 0; i < _pool.length; i++)
         {
             Connection conn = cast(Connection)_pool[i];
 
-            if (!conn.busy)
+            if ((conn is null) || conn.busy)
             {
-                if (!testConnection(conn))
-                {
-                    conn = createConnection();
-                }
-
-                if (conn !is null)
-                {
-                    conn.busy = true;
-                }
-
-                return conn;
+                continue;
             }
+
+            if (!testConnection(conn))
+            {
+                conn = null;
+                continue;
+            }
+
+            conn.busy = true;
+            result = conn;
+            break;
         }
 
-        return null;
+        if (_pool.any!((a) => (a is null)))
+        {
+            _pool = _pool.remove!((a) => (a is null));
+        }
+
+        return result;
     }
 
     bool testConnection(Connection conn) shared
@@ -259,8 +268,6 @@ private:
             conn.busy = false;
         }
     }
-
-private:
 
     Connection[] _pool;
 
