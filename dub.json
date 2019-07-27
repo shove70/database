@@ -3,8 +3,7 @@
         "Marcio Martins",
         "Shove"
     ],
-    "configurations": [
-        {
+    "configurations": [{
             "name": "mysql",
             "versions": ["MYSQL"]
         },

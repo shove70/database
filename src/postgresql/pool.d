@@ -18,7 +18,8 @@ alias ConnectionPool = shared ConnectionProvider;
 final class ConnectionProvider
 {
     static ConnectionPool getInstance(string host, string user, string password, string database, ushort port = 5432,
-        uint maxConnections = 10, uint initialConnections = 3, uint incrementalConnections = 3, uint waitSeconds = 5, ConnectionOptions options = ConnectionOptions.Default)
+        uint maxConnections = 10, uint initialConnections = 3, uint incrementalConnections = 3, uint waitSeconds = 5,
+        ConnectionOptions options = ConnectionOptions.Default)
     {
         assert(initialConnections > 0 && incrementalConnections > 0);
 
@@ -28,7 +29,8 @@ final class ConnectionProvider
             {
                 if (_instance is null)
                 {
-                    _instance = new ConnectionPool(host, user, password, database, port, maxConnections, initialConnections, incrementalConnections, waitSeconds, options);
+                    _instance = new ConnectionPool(host, user, password, database, port,
+                        maxConnections, initialConnections, incrementalConnections, waitSeconds, options);
                 }
             }
         }
@@ -36,42 +38,62 @@ final class ConnectionProvider
         return _instance;
     }
 
-    private this(string host, string user, string password, string database, ushort port, uint maxConnections, uint initialConnections, uint incrementalConnections, uint waitSeconds, ConnectionOptions options) shared
+    private this(string host, string user, string password, string database, ushort port,
+        uint maxConnections, uint initialConnections, uint incrementalConnections, uint waitSeconds,
+        ConnectionOptions options) shared
     {
-        _pool = cast(shared Tid)spawn(new shared Pool(host, user, password, database, port, maxConnections, initialConnections, incrementalConnections, waitSeconds.dur!"seconds", options));
+        _pool = cast(shared Tid)spawn(new shared Pool(host, user, password, database, port,
+            maxConnections, initialConnections, incrementalConnections, waitSeconds.seconds, options));
         _waitSeconds = waitSeconds;
+        while (!__instantiated) Thread.sleep(0.msecs);
     }
 
     ~this() shared
     {
         (cast(Tid)_pool).send(new shared Terminate(cast(shared Tid)thisTid));
 
-        receive(
-            (shared Terminate _t)
-            {
-                return;
-            }
-        );
+        L_receive: try
+        {
+            receive(
+                (shared Terminate _t)
+                {
+                    return;
+                }
+            );
+        }
+        catch (OwnerTerminated e)
+        {
+            if (e.tid != thisTid) goto L_receive;
+        }
+
+        __instantiated = true;
     }
 
     Connection getConnection() shared
     {
         (cast(Tid)_pool).send(new shared RequestConnection(cast(shared Tid)thisTid));
-        Connection ret;
+        Connection conn;
 
-        receiveTimeout(
-            _waitSeconds.dur!"seconds",
-            (shared ConnenctionHolder holder)
-            {
-                ret = cast(Connection)holder.conn;
-            },
-            (immutable ConnectionBusy _m)
-            {
-                ret = null;
-            }
-        );
+        L_receive: try
+        {
+            receiveTimeout(
+                _waitSeconds.seconds,
+                (shared ConnenctionHolder holder)
+                {
+                    conn = cast(Connection)holder.conn;
+                },
+                (immutable ConnectionBusy _m)
+                {
+                    conn = null;
+                }
+            );
+        }
+        catch (OwnerTerminated e)
+        {
+            if (e.tid != thisTid) goto L_receive;
+        }
 
-        return ret;
+        return conn;
     }
 
     void releaseConnection(ref Connection conn) shared
@@ -90,9 +112,13 @@ private:
 
 private:
 
+shared bool __instantiated;
+
 class Pool
 {
-    this(string host, string user, string password, string database, ushort port, uint maxConnections, uint initialConnections, uint incrementalConnections, Duration waitTime, ConnectionOptions options) shared
+    this(string host, string user, string password, string database, ushort port,
+        uint maxConnections, uint initialConnections, uint incrementalConnections, Duration waitTime,
+        ConnectionOptions options) shared
     {
         _host = host;
         _user = user;
@@ -106,6 +132,7 @@ class Pool
         _options = options;
 
         createConnections(initialConnections);
+        __instantiated = true;
     }
 
     void opCall() shared
@@ -132,15 +159,12 @@ class Pool
                             (cast(Connection)conn).close();
                         }
 
-                        loop = false;
                         (cast(Tid)t.tid).send(t);
+                        loop = false;
                     }
                 );
             }
-            catch (OwnerTerminated e)
-            {
-                loop = false;
-            }
+            catch (OwnerTerminated e) { }
         }
     }
 
@@ -187,7 +211,6 @@ private:
             if (conn !is null)
             {
                 (cast(Tid)req.tid).send(new shared ConnenctionHolder(cast(shared Connection)conn));
-
                 return;
             }
 
