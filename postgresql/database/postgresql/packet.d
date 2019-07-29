@@ -1,26 +1,67 @@
-module mysql.packet;
-
-version(MYSQL):
+module database.postgresql.packet;
 
 import std.algorithm;
+import std.bitmanip;
 import std.traits;
 
-import mysql.exception;
+import database.postgresql.exception;
+
+pragma(inline, true) T host(T)(T x) if (isScalarType!T)
+{
+    static if (T.sizeof > 1)
+    {
+        return *cast(T*)(nativeToBigEndian(x).ptr);
+    }
+    else
+    {
+        return x;
+    }
+}
+
+pragma(inline, true) T native(T)(T x) if (isScalarType!T)
+{
+    static if (T.sizeof > 1)
+    {
+        return bigEndianToNative!T(*cast(ubyte[T.sizeof]*)&x);
+    }
+    else
+    {
+        return x;
+    }
+}
+
+pragma(inline, true) T native(T)(ubyte* ptr) if (isScalarType!T)
+{
+    static if (T.sizeof > 1)
+    {
+        return bigEndianToNative!T(*cast(ubyte[T.sizeof]*)ptr);
+    }
+    else
+    {
+        return x.ptr[0];
+    }
+}
 
 struct InputPacket
 {
     @disable this();
 
-    this(ubyte[]* buffer)
+    this(ubyte type, ubyte[]* buffer)
     {
+        type_ = type;
         buffer_ = buffer;
         in_ = *buffer_;
+    }
+
+    ubyte type() const
+    {
+        return type_;
     }
 
     T peek(T)() if (!isArray!T)
     {
         assert(T.sizeof <= in_.length);
-        return *(cast(T*)in_.ptr);
+        return native(*(cast(T*)in_.ptr));
     }
 
     T eat(T)() if (!isArray!T)
@@ -28,16 +69,29 @@ struct InputPacket
         assert(T.sizeof <= in_.length);
         auto ptr = cast(T*)in_.ptr;
         in_ = in_[T.sizeof..$];
-        return *ptr;
+        return native(*ptr);
     }
 
-    T peek(T)(size_t count) if (isArray!T)
+    const(char)[] peekz()
     {
-        alias ValueType = typeof(Type.init[0]);
+        import core.stdc.string : strlen;
+        return cast(const(char)[])in_[0..strlen(cast(char*)in_.ptr)];
+    }
 
-        assert(ValueType.sizeof * count <= in_.length);
-        auto ptr = cast(ValueType*)in_.ptr;
-        return ptr[0..count];
+    const(char)[] eatz()
+    {
+        import core.stdc.string : strlen;
+        auto len = strlen(cast(char*)in_.ptr);
+        auto result = cast(const(char)[])in_[0..len];
+        in_ = in_[len + 1..$];
+        return result;
+    }
+
+    void skipz()
+    {
+        import core.stdc.string : strlen;
+        auto len = strlen(cast(char*)in_.ptr);
+        in_ = in_[len + 1..$];
     }
 
     T eat(T)(size_t count) if (isArray!T)
@@ -53,12 +107,11 @@ struct InputPacket
     void expect(T)(T x)
     {
         if (x != eat!T)
-            throw new MySQLProtocolException("Bad packet format");
+            throw new PgSQLProtocolException("Bad packet format");
     }
 
     void skip(size_t count)
     {
-        if (in_.length == 0) return;
         assert(count <= in_.length);
         in_ = in_[count..$];
     }
@@ -66,13 +119,11 @@ struct InputPacket
     auto countUntil(ubyte x, bool expect)
     {
         auto index = in_.countUntil(x);
-
         if (expect)
         {
             if ((index < 0) || (in_[index] != x))
-                throw new MySQLProtocolException("Bad packet format");
+                throw new PgSQLProtocolException("Bad packet format");
         }
-
         return index;
     }
 
@@ -95,7 +146,7 @@ struct InputPacket
                     skip(8);
                     return;
                 default:
-                    throw new MySQLProtocolException("Bad packet format");
+                    throw new PgSQLProtocolException("Bad packet format");
             }
         }
     }
@@ -124,8 +175,13 @@ struct InputPacket
             hi = eat!uint;
             return lo | (hi << 32);
         default:
-            throw new MySQLProtocolException("Bad packet format");
+            throw new PgSQLProtocolException("Bad packet format");
         }
+    }
+
+    auto get() const
+    {
+        return in_;
     }
 
     auto remaining() const
@@ -142,6 +198,7 @@ protected:
 
     ubyte[]* buffer_;
     ubyte[] in_;
+    ubyte type_;
 }
 
 struct OutputPacket
@@ -151,7 +208,24 @@ struct OutputPacket
     this(ubyte[]* buffer)
     {
         buffer_ = buffer;
+        implicit_ = 4;
         out_ = buffer_.ptr + 4;
+    }
+
+    this(ubyte type, ubyte[]* buffer)
+    {
+        buffer_ = buffer;
+        implicit_ = 5;
+        if (buffer_.length < implicit_)
+            buffer_.length = implicit_;
+        *buffer_.ptr = type;
+        out_ = buffer_.ptr + implicit_;
+    }
+
+    void putz(const(char)[] x)
+    {
+        put(x);
+        put!ubyte(0);
     }
 
     pragma(inline, true) void put(T)(T x)
@@ -159,11 +233,11 @@ struct OutputPacket
         put(offset_, x);
     }
 
-    void put(T)(size_t offset, T x) if (!isArray!T)
+    pragma(inline, true) void put(T)(size_t offset, T x) if (!isArray!T)
     {
         grow(offset, T.sizeof);
 
-        *(cast(T*)(out_ + offset)) = x;
+        *(cast(T*)(out_ + offset)) = host(x);
         offset_ = max(offset + T.sizeof, offset_);
     }
 
@@ -173,7 +247,16 @@ struct OutputPacket
 
         grow(offset, ValueType.sizeof * x.length);
 
-        (cast(ValueType*)(out_ + offset))[0..x.length] = x;
+        static if (ValueType.sizeof == 1)
+        {
+            (cast(ValueType*)(out_ + offset))[0..x.length] = x;
+        }
+        else
+        {
+            auto pout = cast(ValueType*)(out_ + offset);
+            foreach (ref y; x)
+                *pout++ = host(y);
+        }
         offset_ = max(offset + (ValueType.sizeof * x.length), offset_);
     }
 
@@ -221,22 +304,21 @@ struct OutputPacket
         return place;
     }
 
-    void finalize(ubyte seq)
+    void finalize()
     {
-        if (offset_ >=  0xffffff)
-            throw new MySQLConnectionException("Packet size exceeds 2^24");
-        uint length = cast(uint)offset_;
-        uint header = cast(uint)((offset_ & 0xffffff) | (seq << 24));
-        *(cast(uint*)buffer_.ptr) = header;
+        if ((offset_ + implicit_) > int.max)
+            throw new PgSQLConnectionException("Packet size exceeds 2^31");
+        *(cast(uint*)(buffer_.ptr + implicit_ - 4)) = host(cast(uint)(4 + offset_));
+    }
+
+    void finalize(ubyte)
+    {
+        finalize();
     }
 
     void finalize(ubyte seq, size_t extra)
     {
-        if (offset_ + extra >= 0xffffff)
-            throw new MySQLConnectionException("Packet size exceeds 2^24");
-        uint length = cast(uint)(offset_ + extra);
-        uint header = cast(uint)((length & 0xffffff) | (seq << 24));
-        *(cast(uint*)buffer_.ptr) = header;
+        finalize();
     }
 
     void reset()
@@ -246,8 +328,8 @@ struct OutputPacket
 
     void reserve(size_t size)
     {
-        (*buffer_).length = max((*buffer_).length, 4 + size);
-        out_ = buffer_.ptr + 4;
+        (*buffer_).length = max((*buffer_).length, implicit_ + size);
+        out_ = buffer_.ptr + implicit_;
     }
 
     void fill(ubyte x, size_t size)
@@ -269,29 +351,27 @@ struct OutputPacket
 
     const(ubyte)[] get() const
     {
-        return (*buffer_)[0..4 + offset_];
+        return (*buffer_)[0..implicit_ + offset_];
     }
 
 protected:
 
     void grow(size_t offset, size_t size)
     {
-        auto requested = 4 + offset + size;
-
+        auto requested = implicit_ + offset + size;
         if (requested > buffer_.length)
         {
             auto capacity = max(128, (*buffer_).capacity);
             while (capacity < requested)
-            {
                 capacity <<= 1;
-            }
-
             buffer_.length = capacity;
-            out_ = buffer_.ptr + 4;
+            out_ = buffer_.ptr + implicit_;
         }
     }
 
     ubyte[]* buffer_;
+
     ubyte* out_;
     size_t offset_;
+    size_t implicit_;
 }

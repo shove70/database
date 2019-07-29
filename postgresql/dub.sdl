@@ -1,0 +1,5 @@
+name "postgresql"
+description "Lightweight native PostgreSQL driver"
+targetType "library"
+sourcePaths "."
+importPaths "."

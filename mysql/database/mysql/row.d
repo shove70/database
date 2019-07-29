@@ -1,16 +1,14 @@
-module postgresql.row;
-
-version(POSTGRESQL):
+module database.mysql.row;
 
 import std.algorithm;
 import std.datetime;
 import std.traits;
 import std.typecons;
-import std.ascii;
 import std.format : format;
+import std.ascii;
 
-import postgresql.exception;
-import postgresql.type;
+import database.mysql.exception;
+import database.mysql.type;
 
 enum Strict
 {
@@ -19,7 +17,7 @@ enum Strict
     no,
 }
 
-package uint hashOf(const(char)[] x)
+private uint hashOf(const(char)[] x)
 {
     uint hash = 2166136261u;
     foreach(i; 0..x.length)
@@ -42,7 +40,7 @@ private bool equalsCI(const(char)[]x, const(char)[] y)
     return true;
 }
 
-struct PgSQLRow
+struct MySQLRow
 {
     @property size_t opDollar() const
     {
@@ -74,7 +72,7 @@ struct PgSQLRow
     {
         if (auto index = find_(key.hashOf, key))
             return values_[index - 1];
-        throw new PgSQLErrorException("Column '" ~ key ~ "' was not found in this result set");
+        throw new MySQLErrorException("Column '" ~ key ~ "' was not found in this result set");
     }
 
     ref auto opIndex(size_t index) const
@@ -82,14 +80,14 @@ struct PgSQLRow
         return values_[index];
     }
 
-    const(PgSQLValue)* opBinaryRight(string op)(string key) const if (op == "in")
+    const(MySQLValue)* opBinaryRight(string op)(string key) const if (op == "in")
     {
         if (auto index = find(key.hashOf, key))
             return &values_[index - 1];
         return null;
     }
 
-    int opApply(int delegate(const ref PgSQLValue value) del) const
+    int opApply(int delegate(const ref MySQLValue value) del) const
     {
         foreach (ref v; values_)
             if (auto ret = del(v))
@@ -97,7 +95,7 @@ struct PgSQLRow
         return 0;
     }
 
-    int opApply(int delegate(ref size_t, const ref PgSQLValue) del) const
+    int opApply(int delegate(ref size_t, const ref MySQLValue) del) const
     {
         foreach (ref size_t i, ref v; values_)
             if (auto ret = del(i, v))
@@ -105,7 +103,7 @@ struct PgSQLRow
         return 0;
     }
 
-    int opApply(int delegate(const ref const(char)[], const ref PgSQLValue) del) const
+    int opApply(int delegate(const ref const(char)[], const ref MySQLValue) del) const
     {
         foreach (size_t i, ref v; values_)
             if (auto ret = del(names_[i], v))
@@ -150,7 +148,7 @@ struct PgSQLRow
         return result;
     }
 
-    void toStruct(T, Strict strict = Strict.yesIgnoreNull)(ref T x) if(is(Unqual!T == struct))
+    void toStruct(T, Strict strict = Strict.yesIgnoreNull)(ref T x) if(is(Unqual!T == struct) && !is(T == Strict))
     {
         static if (isTuple!(Unqual!T))
         {
@@ -170,14 +168,18 @@ struct PgSQLRow
                 }
                 else static if ((strict == Strict.yes) || (strict == Strict.yesIgnoreNull))
                 {
-                    throw new PgSQLErrorException("Column " ~ i ~ " is out of range for this result set");
+                    throw new MySQLErrorException("Column " ~ i ~ " is out of range for this result set");
                 }
             }
         }
         else
         {
-            structurize!(T, strict, null)(x);
+            structurize!(strict, null)(x);
         }
+    }
+
+    void toStruct(Strict strict, T)(ref T x) if (is(Unqual!T == struct)) {
+        toStruct!(T, strict)(x);
     }
 
     T toStruct(T, Strict strict = Strict.yesIgnoreNull)() if (is(Unqual!T == struct))
@@ -194,10 +196,10 @@ package:
     {
         if (auto index = find_(hash, key))
             return opIndex(index - 1);
-        throw new PgSQLErrorException("Column '" ~ key ~ "' was not found in this result set");
+        throw new MySQLErrorException("Column '" ~ key ~ "' was not found in this result set");
     }
 
-    void header_(PgSQLHeader header)
+    void header_(MySQLHeader header)
     {
         auto headerLen = header.length;
         auto idealLen = (headerLen + (headerLen >> 2));
@@ -242,8 +244,7 @@ package:
 
     uint find_(uint hash, const(char)[] key) const
     {
-        if (auto mask = index_.length - 1)
-        {
+        if (auto mask = index_.length - 1) {
             assert((index_.length & mask) == 0);
 
             hash = hash & mask;
@@ -264,6 +265,7 @@ package:
                 }
             }
         }
+
         return 0;
     }
 
@@ -274,7 +276,7 @@ package:
 
 private:
 
-    void structurize(T, Strict strict = Strict.yesIgnoreNull, string path = null)(ref T result)
+    void structurize(Strict strict = Strict.yesIgnoreNull, string path = null, T)(ref T result)
     {
         enum unCamel = hasUDA!(T, UnCamelCaseAttribute);
 
@@ -289,7 +291,9 @@ private:
                     {
                         enum pathMemberAlt = path ~ member.unCamelCase;
                     }
-                } else {
+                }
+                else
+                {
                     enum pathMember = path ~ getUDAs!(__traits(getMember, result, member), NameAttribute)[0].name;
                     static if (unCamel)
                     {
@@ -299,16 +303,18 @@ private:
 
                 alias MemberType = typeof(__traits(getMember, result, member));
 
-                static if (! isValueType!MemberType)
+                static if (isPointer!MemberType && !isValueType!(PointerTarget!MemberType) || !isValueType!MemberType)
                 {
                     enum pathNew = pathMember ~ ".";
-                    static if (hasUDA!(__traits(getMember, result, member), OptionalAttribute))
+                    enum st = Select!(hasUDA!(__traits(getMember, result, member), OptionalAttribute), Strict.no, strict);
+                    static if (isPointer!MemberType)
                     {
-                        structurize!(MemberType, Strict.no, pathNew)(__traits(getMember, result, member));
+                        if (__traits(getMember, result, member))
+                            structurize!(st, pathNew)(*__traits(getMember, result, member));
                     }
                     else
                     {
-                        structurize!(MemberType, strict, pathNew)(__traits(getMember, result, member));
+                        structurize!(st, pathNew)(__traits(getMember, result, member));
                     }
                 }
                 else
@@ -348,16 +354,16 @@ private:
                         }
                         else
                         {
-                            enum ColumnError = format("Column '%s' or '%s' was not found in this result set", pathMember, pathMember);
+                            enum ColumnError = format("Column '%s' or '%s' was not found in this result set", pathMember, pathMemberAlt);
                         }
-                        throw new PgSQLErrorException(ColumnError);
+                        throw new MySQLErrorException(ColumnError);
                     }
                 }
             }
         }
     }
 
-    PgSQLValue[] values_;
+    MySQLValue[] values_;
     const(char)[][] names_;
     uint[] index_;
 }
@@ -402,7 +408,8 @@ string unCamelCase(string x)
             auto ch = x.ptr[i];
             auto cls = classify(ch);
 
-            final switch (cls) {
+            final switch (cls)
+            {
             case Underscore:
                 buffer[length++] = '_';
                 break;

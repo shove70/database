@@ -1,6 +1,4 @@
-module postgresql.type;
-
-version(POSTGRESQL):
+module database.postgresql.type;
 
 import std.algorithm;
 import std.array : appender;
@@ -11,10 +9,10 @@ import std.format: format, formattedWrite;
 import std.traits;
 import std.typecons;
 
-import postgresql.protocol;
-import postgresql.packet;
-import postgresql.exception;
-import postgresql.row;
+import database.postgresql.protocol;
+import database.postgresql.packet;
+import database.postgresql.exception;
+import database.postgresql.row;
 
 struct IgnoreAttribute {}
 struct OptionalAttribute {}

@@ -1,6 +1,4 @@
-module postgresql.exception;
-
-version(POSTGRESQL):
+module database.postgresql.exception;
 
 class PgSQLException : Exception
 {

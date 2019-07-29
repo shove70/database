@@ -3,25 +3,24 @@
         "Marcio Martins",
         "Shove"
     ],
-    "configurations": [{
-            "name": "mysql",
-            "versions": ["MYSQL"]
-        },
-        {
-            "name": "postgresql",
-            "versions": ["POSTGRESQL"]
-        }
-    ],
     "name": "database",
     "license": "MIT License",
     "copyright": "Copyright © 2015, Marcio Martins, Shove",
     "targetName": "database",
     "targetType": "library",
+    "dependencies": {
+        "database:mysql": "*",
+        "database:postgresql": "*"
+    },
     "importPaths": [
-        "src"
+        "source"
     ],
     "sourcePaths": [
-        "src"
+        "source"
+    ],
+    "subPackages": [
+        "mysql",
+        "postgresql"
     ],
     "description": "Lightweight native MySQL/MariaDB & PostgreSQL driver"
 }

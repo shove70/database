@@ -1,6 +1,4 @@
-module mysql.inserter;
-
-version(MYSQL):
+module database.mysql.inserter;
 
 import std.array;
 import std.meta;
@@ -10,8 +8,8 @@ import std.traits;
 import std.typecons;
 import std.datetime;
 
-import mysql.connection;
-import mysql.exception;
+import database.mysql.connection;
+import database.mysql.exception;
 
 enum OnDuplicate : size_t
 {

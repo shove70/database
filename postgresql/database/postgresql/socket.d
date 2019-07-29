@@ -1,6 +1,4 @@
-module mysql.socket;
-
-version(MYSQL):
+module database.postgresql.socket;
 
 import core.stdc.errno;
 
@@ -8,7 +6,7 @@ import std.socket;
 import std.exception;
 import std.datetime;
 
-import mysql.exception;
+import database.postgresql.exception;
 
 struct Socket
 {
@@ -52,7 +50,7 @@ struct Socket
 
             if (len == 0)
             {
-                throw new MySQLConnectionException("Server closed the connection");
+                throw new PgSQLConnectionException("Server closed the connection");
             }
 
             if ((errno == EINTR) || (errno == EAGAIN) || (errno == EWOULDBLOCK))
@@ -62,7 +60,7 @@ struct Socket
                 continue;
             }
 
-            throw new MySQLConnectionException("Received std.socket.Socket.ERROR: " ~ formatSocketError(errno));
+            throw new PgSQLConnectionException("Received std.socket.Socket.ERROR: " ~ formatSocketError(errno));
         }
     }
 
@@ -81,7 +79,7 @@ struct Socket
 
             if (len == 0)
             {
-                throw new MySQLConnectionException("Server closed the connection");
+                throw new PgSQLConnectionException("Server closed the connection");
             }
 
             if ((errno == EINTR) || (errno == EAGAIN) || (errno == EWOULDBLOCK))
@@ -91,7 +89,7 @@ struct Socket
                 continue;
             }
 
-            throw new MySQLConnectionException("Sent std.socket.Socket.ERROR: " ~ formatSocketError(errno));
+            throw new PgSQLConnectionException("Sent std.socket.Socket.ERROR: " ~ formatSocketError(errno));
         }
     }
 

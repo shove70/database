@@ -1,7 +1,16 @@
 /.project
 **/.dub/
 **/dub.selections.json
+/.editorconfig
+
 /libdatabase.a
 /database.lib
-/.editorconfig
 /database
+
+**/libdatabase_mysql.a
+**/database_mysql.lib
+**/libdatabase_mysql
+
+**/libdatabase_postgresql.a
+**/database_postgresql.lib
+**/libdatabase_postgresql

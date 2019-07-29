@@ -1,6 +1,4 @@
-module postgresql.appender;
-
-version(POSTGRESQL):
+module database.postgresql.appender;
 
 import std.conv;
 import std.datetime;
@@ -8,8 +6,8 @@ import std.format;
 import std.traits;
 import std.typecons;
 
-import postgresql.protocol;
-import postgresql.type;
+import database.postgresql.protocol;
+import database.postgresql.type;
 
 void appendValues(Appender, T)(ref Appender appender, T values) if (isArray!T && !isSomeString!(OriginalType!T))
 {

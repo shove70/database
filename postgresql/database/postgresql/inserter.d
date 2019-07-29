@@ -1,6 +1,4 @@
-module postgresql.inserter;
-
-version(POSTGRESQL):
+module database.postgresql.inserter;
 
 import std.array;
 import std.meta;
@@ -8,8 +6,8 @@ import std.range;
 import std.string;
 import std.traits;
 
-import postgresql.connection;
-import postgresql.exception;
+import database.postgresql.connection;
+import database.postgresql.exception;
 
 enum OnDuplicate : size_t
 {

@@ -1,6 +1,4 @@
-module mysql.exception;
-
-version(MYSQL):
+module database.mysql.exception;
 
 class MySQLException : Exception
 {

@@ -1,6 +1,4 @@
-module mysql.type;
-
-version(MYSQL):
+module database.mysql.type;
 
 import std.algorithm;
 import std.array : appender;
@@ -11,10 +9,10 @@ import std.traits;
 import std.typecons;
 import std.variant;
 
-import mysql.protocol;
-import mysql.packet;
-import mysql.exception;
-import mysql.row;
+import database.mysql.protocol;
+import database.mysql.packet;
+import database.mysql.exception;
+import database.mysql.row;
 
 struct IgnoreAttribute {}
 struct OptionalAttribute {}

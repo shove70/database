@@ -1,6 +1,4 @@
-module mysql.connection;
-
-version(MYSQL):
+module database.mysql.connection;
 
 import std.algorithm;
 import std.array;
@@ -10,13 +8,13 @@ import std.traits;
 import std.uni : sicmp;
 import std.utf : decode, UseReplacementDchar;
 
-import mysql.exception;
-import mysql.packet;
-import mysql.protocol;
-import mysql.type;
-import mysql.socket;
-import mysql.row;
-import mysql.appender;
+import database.mysql.exception;
+import database.mysql.packet;
+import database.mysql.protocol;
+import database.mysql.type;
+import database.mysql.socket;
+import database.mysql.row;
+import database.mysql.appender;
 
 immutable CapabilityFlags DefaultClientCaps = CapabilityFlags.CLIENT_LONG_PASSWORD | CapabilityFlags.CLIENT_LONG_FLAG |
 CapabilityFlags.CLIENT_CONNECT_WITH_DB | CapabilityFlags.CLIENT_PROTOCOL_41 | CapabilityFlags.CLIENT_SECURE_CONNECTION | CapabilityFlags.CLIENT_SESSION_TRACK;

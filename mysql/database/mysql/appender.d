@@ -1,12 +1,10 @@
-module mysql.appender;
-
-version(MYSQL):
+module database.mysql.appender;
 
 import std.datetime;
 import std.traits;
 import std.typecons;
 
-import mysql.type;
+import database.mysql.type;
 
 void appendValues(Appender, T)(ref Appender appender, T values) if (isArray!T && !isSomeString!(OriginalType!T))
 {

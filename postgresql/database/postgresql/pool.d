@@ -1,6 +1,4 @@
-module mysql.pool;
-
-version(MYSQL):
+module database.postgresql.pool;
 
 import core.time;
 import core.thread;
@@ -11,16 +9,15 @@ import std.datetime;
 import std.algorithm.searching : any;
 import std.algorithm.mutation : remove;
 
-import mysql.connection;
-import mysql.protocol;
+import database.postgresql.connection;
 
 alias ConnectionPool = shared ConnectionProvider;
 
 final class ConnectionProvider
 {
-    static ConnectionPool getInstance(string host, string user, string password, string database, ushort port = 3306,
+    static ConnectionPool getInstance(string host, string user, string password, string database, ushort port = 5432,
         uint maxConnections = 10, uint initialConnections = 3, uint incrementalConnections = 3, uint waitSeconds = 5,
-        CapabilityFlags caps = DefaultClientCaps)
+        ConnectionOptions options = ConnectionOptions.Default)
     {
         assert(initialConnections > 0 && incrementalConnections > 0);
 
@@ -31,7 +28,7 @@ final class ConnectionProvider
                 if (_instance is null)
                 {
                     _instance = new ConnectionPool(host, user, password, database, port,
-                        maxConnections, initialConnections, incrementalConnections, waitSeconds, caps);
+                        maxConnections, initialConnections, incrementalConnections, waitSeconds, options);
                 }
             }
         }
@@ -41,10 +38,10 @@ final class ConnectionProvider
 
     private this(string host, string user, string password, string database, ushort port,
         uint maxConnections, uint initialConnections, uint incrementalConnections, uint waitSeconds,
-        CapabilityFlags caps) shared
+        ConnectionOptions options) shared
     {
         _pool = cast(shared Tid)spawn(new shared Pool(host, user, password, database, port,
-            maxConnections, initialConnections, incrementalConnections, waitSeconds.seconds, caps));
+            maxConnections, initialConnections, incrementalConnections, waitSeconds.seconds, options));
         _waitSeconds = waitSeconds;
         while (!__instantiated) Thread.sleep(0.msecs);
     }
@@ -67,7 +64,7 @@ final class ConnectionProvider
             if (e.tid != thisTid) goto L_receive;
         }
 
-        __instantiated = false;
+        __instantiated = true;
     }
 
     Connection getConnection() shared
@@ -119,7 +116,7 @@ class Pool
 {
     this(string host, string user, string password, string database, ushort port,
         uint maxConnections, uint initialConnections, uint incrementalConnections, Duration waitTime,
-        CapabilityFlags caps) shared
+        ConnectionOptions options) shared
     {
         _host = host;
         _user = user;
@@ -130,7 +127,7 @@ class Pool
         _initialConnections = initialConnections;
         _incrementalConnections = incrementalConnections;
         _waitTime = waitTime;
-        _caps = caps;
+        _options = options;
 
         createConnections(initialConnections);
         __instantiated = true;
@@ -175,7 +172,7 @@ private:
     {
         try
         {
-            return new Connection(_host, _user, _password, _database, _port, _caps);
+            return new Connection(_host, _user, _password, _database, _port, _options);
         }
         catch (Exception e)
         {
@@ -304,7 +301,7 @@ private:
     uint _initialConnections;
     uint _incrementalConnections;
     Duration _waitTime;
-    CapabilityFlags _caps;
+    ConnectionOptions _options;
 }
 
 shared class RequestConnection
@@ -340,27 +337,3 @@ shared class Terminate
         this.tid = tid;
     }
 }
-
-// unittest
-// {
-//     import core.thread;
-//     import std.stdio;
-
-//     ConnectionPool pool = ConnectionPool.getInstance("127.0.0.1", "root", "111111", "test", 3306);
-
-//     int i = 0;
-//     while (i++ < 20)
-//     {
-//         Thread.sleep(100.msecs);
-
-//         Connection conn = pool.getConnection();
-
-//         if (conn !is null)
-//         {
-//             writeln(conn.connected());
-//             pool.releaseConnection(conn);
-//         }
-//     }
-
-//     pool.destroy();
-// }

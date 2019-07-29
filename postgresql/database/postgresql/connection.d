@@ -1,6 +1,4 @@
-module postgresql.connection;
-
-version(POSTGRESQL):
+module database.postgresql.connection;
 
 import std.algorithm;
 import std.array;
@@ -12,13 +10,13 @@ import std.uni : sicmp;
 import std.utf : decode, UseReplacementDchar;
 import std.format;
 
-import postgresql.exception;
-import postgresql.packet;
-import postgresql.protocol;
-import postgresql.type;
-import postgresql.socket;
-import postgresql.row;
-import postgresql.appender;
+import database.postgresql.exception;
+import database.postgresql.packet;
+import database.postgresql.protocol;
+import database.postgresql.type;
+import database.postgresql.socket;
+import database.postgresql.row;
+import database.postgresql.appender;
 
 struct ConnectionStatus
 {
@@ -588,7 +586,7 @@ private:
         while (field)
         {
             auto value = packet.eatz();
-            import postgresql.row : hashOf;
+            import database.postgresql.row : hashOf;
 
             switch (field) with (NoticeMessageField)
             {
@@ -671,7 +669,7 @@ private:
     void eatCommandComplete(InputPacket packet)
     {
         assert(packet.type == InputMessageType.CommandComplete);
-        import postgresql.row : hashOf;
+        import database.postgresql.row : hashOf;
 
         auto tag = packet.eatz().splitter(' ');
         auto command = tag.front();

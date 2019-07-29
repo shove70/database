@@ -1,6 +1,4 @@
-module mysql.protocol;
-
-version(MYSQL):
+module database.mysql.protocol;
 
 enum CapabilityFlags : uint
 {
