@@ -213,11 +213,6 @@ class Connection
         return schema_;
     }
 
-//    ConnectionSettings settings() const
-//    {
-//        return settings_;
-//    }
-
     const(ConnectionNotice)[] notices() const
     {
         return notices_;

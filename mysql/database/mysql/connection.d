@@ -95,10 +95,8 @@ private struct ServerInfo
     uint caps;
 }
 
-struct PreparedStatement
+private struct PreparedStatement
 {
-package:
-
     uint id;
     uint params;
 }
@@ -172,11 +170,6 @@ class Connection
     {
         return schema_;
     }
-
-//    ConnectionSettings settings() const
-//    {
-//        return settings_;
-//    }
 
     auto prepare(const(char)[] sql)
     {
