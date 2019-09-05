@@ -90,23 +90,23 @@ private struct ConnectionSettings
 
             switch (name)
             {
-            case "host":
-                host = value;
-                break;
-            case "user":
-                user = value;
-                break;
-            case "pwd":
-                pwd = value;
-                break;
-            case "db":
-                db = value;
-                break;
-            case "port":
-                port = to!ushort(value);
-                break;
-            default:
-                throw new PgSQLException(format("Bad connection string: %s", connectionString));
+                case "host":
+                    host = value;
+                    break;
+                case "user":
+                    user = value;
+                    break;
+                case "pwd":
+                    pwd = value;
+                    break;
+                case "db":
+                    db = value;
+                    break;
+                case "port":
+                    port = to!ushort(value);
+                    break;
+                default:
+                    throw new PgSQLException(format("Bad connection string: %s", connectionString));
             }
 
             if (indexValueEnd == remaining.length)
@@ -314,17 +314,8 @@ class Connection
 
 package:
 
-    bool busy_ = false;
-
-    @property bool busy()
-    {
-        return busy_;
-    }
-
-    @property void busy(bool value)
-    {
-        busy_ = value;
-    }
+    bool busy = false;
+    bool pooled = false;
 
 private:
 
@@ -427,14 +418,14 @@ private:
 
         switch (id) with (InputMessageType)
         {
-        case ErrorResponse:
-        case NoticeResponse:
-        case ReadyForQuery:
-        case NotificationResponse:
-        case CommandComplete:
-            return true;
-        default:
-            return false;
+            case ErrorResponse:
+            case NoticeResponse:
+            case ReadyForQuery:
+            case NotificationResponse:
+            case CommandComplete:
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -484,55 +475,55 @@ private:
 
         switch (type) with (InputMessageType)
         {
-        case Authentication:
-            auto auth = packet.eat!uint;
-            auto reply = OutputPacket(OutputMessageType.PasswordMessage, &out_);
+            case Authentication:
+                auto auth = packet.eat!uint;
+                auto reply = OutputPacket(OutputMessageType.PasswordMessage, &out_);
 
-            switch (auth)
-            {
-            case 0:
-                return false;
-            case 2:
-                goto default;
-            case 3:
-                reply.putz(settings_.pwd);
-                break;
-            case 5:
-                static char[32] MD5toHex(T...)(in T data)
+                switch (auth)
                 {
-                    import std.ascii : LetterCase;
-                    import std.digest.md : md5Of, toHexString;
-                    return md5Of(data).toHexString!(LetterCase.lower);
+                    case 0:
+                        return false;
+                    case 2:
+                        goto default;
+                    case 3:
+                        reply.putz(settings_.pwd);
+                        break;
+                    case 5:
+                        static char[32] MD5toHex(T...)(in T data)
+                        {
+                            import std.ascii : LetterCase;
+                            import std.digest.md : md5Of, toHexString;
+                            return md5Of(data).toHexString!(LetterCase.lower);
+                        }
+
+                        auto salt = packet.eat!(ubyte[])(4);
+                        reply.put("md5");
+                        reply.putz(MD5toHex(MD5toHex(settings_.pwd, settings_.user), salt));
+                        break;
+                    case 6: // SCM
+                    case 7: // GSS
+                    case 8:
+                    case 9:
+                    case 10: // SASL
+                    case 11:
+                    case 12:
+                        goto default;
+                    default:
+                        throw new PgSQLProtocolException(format("Unsupported authentication method: %s", auth));
                 }
 
-                auto salt = packet.eat!(ubyte[])(4);
-                reply.put("md5");
-                reply.putz(MD5toHex(MD5toHex(settings_.pwd, settings_.user), salt));
+                reply.finalize(0);
+                socket_.write(reply.get());
                 break;
-            case 6: // SCM
-            case 7: // GSS
-            case 8:
-            case 9:
-            case 10: // SASL
-            case 11:
-            case 12:
-                goto default;
+            case NoticeResponse:
+                eatNoticeResponse(packet);
+                break;
+            case ErrorResponse:
+                eatNoticeResponse(packet);
+                throwError(true);
+                break;
             default:
-                throw new PgSQLProtocolException(format("Unsupported authentication method: %s", auth));
-            }
-
-            reply.finalize(0);
-            socket_.write(reply.get());
-            break;
-        case NoticeResponse:
-            eatNoticeResponse(packet);
-            break;
-        case ErrorResponse:
-            eatNoticeResponse(packet);
-            throwError(true);
-            break;
-        default:
-            throw new PgSQLProtocolException(format("Unexpected message: %s", type));
+                throw new PgSQLProtocolException(format("Unexpected message: %s", type));
         }
 
         return true;
@@ -546,20 +537,20 @@ private:
 
         switch (name)
         {
-        case "server_version":
-            server_.versionString = value.dup;
-            break;
-        case "server_encoding":
-            server_.encoding = value.dup;
-            break;
-        case "application_name":
-            server_.application = value.dup;
-            break;
-        case "TimeZone":
-            server_.timeZone = value.dup;
-            break;
-        default:
-            break;
+            case "server_version":
+                server_.versionString = value.dup;
+                break;
+            case "server_encoding":
+                server_.encoding = value.dup;
+                break;
+            case "application_name":
+                server_.application = value.dup;
+                break;
+            case "TimeZone":
+                server_.timeZone = value.dup;
+                break;
+            default:
+                break;
         }
         assert(packet.empty());
     }
@@ -585,75 +576,75 @@ private:
 
             switch (field) with (NoticeMessageField)
             {
-            case Severity:
-            case SeverityLocal:
-                switch (hashOf(value)) with (ConnectionNotice.Severity)
-                {
-                case hashOf("ERROR"):
-                    notice.severity = ERROR;
+                case Severity:
+                case SeverityLocal:
+                    switch (hashOf(value)) with (ConnectionNotice.Severity)
+                    {
+                        case hashOf("ERROR"):
+                            notice.severity = ERROR;
+                            break;
+                        case hashOf("FATAL"):
+                            notice.severity = FATAL;
+                            break;
+                        case hashOf("PANIC"):
+                            notice.severity = PANIC;
+                            break;
+                        case hashOf("WARNING"):
+                            notice.severity = WARNING;
+                            break;
+                        case hashOf("DEBUG"):
+                            notice.severity = DEBUG;
+                            break;
+                        case hashOf("INFO"):
+                            notice.severity = INFO;
+                            break;
+                        case hashOf("LOG"):
+                            notice.severity = LOG;
+                            break;
+                        default:
+                            break;
+                    }
                     break;
-                case hashOf("FATAL"):
-                    notice.severity = FATAL;
+                case Code:
+                    notice.code = value.idup;
                     break;
-                case hashOf("PANIC"):
-                    notice.severity = PANIC;
+                case Message:
+                    notice.message = value.idup;
                     break;
-                case hashOf("WARNING"):
-                    notice.severity = WARNING;
+                case Detail:
+                    notice.detail = value.idup;
                     break;
-                case hashOf("DEBUG"):
-                    notice.severity = DEBUG;
+                case Hint:
+                    notice.hint = value.idup;
                     break;
-                case hashOf("INFO"):
-                    notice.severity = INFO;
+                case Position:
+                    notice.position = value.to!uint;
                     break;
-                case hashOf("LOG"):
-                    notice.severity = LOG;
+                case Where:
+                    notice.where = value.idup;
+                    break;
+                case Schema:
+                    notice.schema = value.idup;
+                    break;
+                case Table:
+                    notice.table = value.idup;
+                    break;
+                case Column:
+                    notice.column = value.idup;
+                    break;
+                case DataType:
+                    notice.type = value.idup;
+                    break;
+                case Constraint:
+                    notice.constraint = value.idup;
+                    break;
+                case File:
+                case Line:
+                case Routine:
                     break;
                 default:
+                    //writeln("  notice: ", cast(char)field, " ", value);
                     break;
-                }
-                break;
-            case Code:
-                notice.code = value.idup;
-                break;
-            case Message:
-                notice.message = value.idup;
-                break;
-            case Detail:
-                notice.detail = value.idup;
-                break;
-            case Hint:
-                notice.hint = value.idup;
-                break;
-            case Position:
-                notice.position = value.to!uint;
-                break;
-            case Where:
-                notice.where = value.idup;
-                break;
-            case Schema:
-                notice.schema = value.idup;
-                break;
-            case Table:
-                notice.table = value.idup;
-                break;
-            case Column:
-                notice.column = value.idup;
-                break;
-            case DataType:
-                notice.type = value.idup;
-                break;
-            case Constraint:
-                notice.constraint = value.idup;
-                break;
-            case File:
-            case Line:
-            case Routine:
-                break;
-            default:
-                //writeln("  notice: ", cast(char)field, " ", value);
-                break;
             }
             field = packet.eat!ubyte;
         }
@@ -672,26 +663,26 @@ private:
 
         switch (hashOf(command))
         {
-        case hashOf("INSERT"):
-            status_.lastInsertId = tag.front().to!ulong;
-            tag.popFront();
-            status_.affected = tag.front().to!ulong;
-            break;
-        case hashOf("SELECT"):
-        case hashOf("DELETE"):
-        case hashOf("UPDATE"):
-        case hashOf("MOVE"):
-        case hashOf("FETCH"):
-        case hashOf("COPY"):
-            status_.lastInsertId = 0;
-            status_.affected = tag.empty() ? 0 : tag.front().to!ulong;
-            break;
-        case hashOf("CREATE"):
-        case hashOf("DROP"):
-            status_.lastInsertId = 0;
-            break;
-        default:
-            throw new PgSQLProtocolException(format("Unexpected command tag: %s", command));
+            case hashOf("INSERT"):
+                status_.lastInsertId = tag.front().to!ulong;
+                tag.popFront();
+                status_.affected = tag.front().to!ulong;
+                break;
+            case hashOf("SELECT"):
+            case hashOf("DELETE"):
+            case hashOf("UPDATE"):
+            case hashOf("MOVE"):
+            case hashOf("FETCH"):
+            case hashOf("COPY"):
+                status_.lastInsertId = 0;
+                status_.affected = tag.empty() ? 0 : tag.front().to!ulong;
+                break;
+            case hashOf("CREATE"):
+            case hashOf("DROP"):
+                status_.lastInsertId = 0;
+                break;
+            default:
+                throw new PgSQLProtocolException(format("Unexpected command tag: %s", command));
         }
     }
 
@@ -701,28 +692,28 @@ private:
 
         switch (type) with (InputMessageType)
         {
-        case ParameterStatus:
-            eatParameterStatus(packet);
-            break;
-        case BackendKeyData:
-            eatBackendKeyData(packet);
-            break;
-        case ReadyForQuery:
-            status_.transaction = cast(TransactionStatus)packet.eat!ubyte;
-            status_.ready = true;
-            break;
-        case NoticeResponse:
-            eatNoticeResponse(packet);
-            break;
-        case ErrorResponse:
-            eatNoticeResponse(packet);
-            throwError(true);
-            break;
-        case CommandComplete:
-            eatCommandComplete(packet);
-            break;
-        default:
-            throw new PgSQLProtocolException(format("Unexpected message: %s", type));
+            case ParameterStatus:
+                eatParameterStatus(packet);
+                break;
+            case BackendKeyData:
+                eatBackendKeyData(packet);
+                break;
+            case ReadyForQuery:
+                status_.transaction = cast(TransactionStatus)packet.eat!ubyte;
+                status_.ready = true;
+                break;
+            case NoticeResponse:
+                eatNoticeResponse(packet);
+                break;
+            case ErrorResponse:
+                eatNoticeResponse(packet);
+                throwError(true);
+                break;
+            case CommandComplete:
+                eatCommandComplete(packet);
+                break;
+            default:
+                throw new PgSQLProtocolException(format("Unexpected message: %s", type));
         }
 
         return type;
@@ -734,12 +725,12 @@ private:
         {
             switch (notice.severity) with (ConnectionNotice.Severity)
             {
-            case PANIC:
-            case ERROR:
-            case FATAL:
-                throw new PgSQLErrorException(cast(string)notice.message);
-            default:
-                break;
+                case PANIC:
+                case ERROR:
+                case FATAL:
+                    throw new PgSQLErrorException(cast(string)notice.message);
+                default:
+                    break;
             }
         }
 
@@ -929,68 +920,68 @@ private:
                 ++argCount;
                 final switch(arg.type) with (PgColumnTypes)
                 {
-                case NULL:
-                    estimated += 4;
-                    break;
-                case CHAR:
-                    estimated += 2;
-                    break;
-                case BOOL:
-                    estimated += 2;
-                    break;
-                case INT2:
-                    estimated += 6;
-                    break;
-                case INT4:
-                    estimated += 7;
-                    break;
-                case INT8:
-                    estimated += 15;
-                    break;
-                case REAL:
-                case DOUBLE:
-                    estimated += 8;
-                    break;
-                case UNKNOWN:
-                case MONEY:
-                case POINT:
-                case LINE:
-                case LSEG:
-                case PATH:
-                case POLYGON:
-                case TINTERVAL:
-                case CIRCLE:
-                case BOX:
-                case JSON:
-                case JSONB:
-                case XML:
-                case MACADDR:
-                case MACADDR8:
-                case INET:
-                case CIDR:
-                case NAME:
-                case TEXT:
-                case INTERVAL:
-                case BIT:
-                case VARBIT:
-                case NUMERIC:
-                case UUID:
-                case CHARA:
-                case BYTEA:
-                case VARCHAR:
-                    estimated += 4 + arg.peek!(const(char)[]).length;
-                    break;
-                case DATE:
-                    estimated += 10;
-                    break;
-                case TIME:
-                case TIMETZ:
-                    estimated += 22;
-                    break;
-                case TIMESTAMP:
-                case TIMESTAMPTZ:
-                    estimated += 30;
-                    break;
+                    case NULL:
+                        estimated += 4;
+                        break;
+                    case CHAR:
+                        estimated += 2;
+                        break;
+                    case BOOL:
+                        estimated += 2;
+                        break;
+                    case INT2:
+                        estimated += 6;
+                        break;
+                    case INT4:
+                        estimated += 7;
+                        break;
+                    case INT8:
+                        estimated += 15;
+                        break;
+                    case REAL:
+                    case DOUBLE:
+                        estimated += 8;
+                        break;
+                    case UNKNOWN:
+                    case MONEY:
+                    case POINT:
+                    case LINE:
+                    case LSEG:
+                    case PATH:
+                    case POLYGON:
+                    case TINTERVAL:
+                    case CIRCLE:
+                    case BOX:
+                    case JSON:
+                    case JSONB:
+                    case XML:
+                    case MACADDR:
+                    case MACADDR8:
+                    case INET:
+                    case CIDR:
+                    case NAME:
+                    case TEXT:
+                    case INTERVAL:
+                    case BIT:
+                    case VARBIT:
+                    case NUMERIC:
+                    case UUID:
+                    case CHARA:
+                    case BYTEA:
+                    case VARCHAR:
+                        estimated += 4 + arg.peek!(const(char)[]).length;
+                        break;
+                    case DATE:
+                        estimated += 10;
+                        break;
+                    case TIME:
+                    case TIMETZ:
+                        estimated += 22;
+                        break;
+                    case TIMESTAMP:
+                    case TIMESTAMPTZ:
+                        estimated += 30;
+                        break;
                 }
             }
             else static if (isArray!(typeof(arg)) && !isSomeString!(typeof(arg)))
@@ -1076,35 +1067,35 @@ private auto copyUpToNext(ref Appender!(char[]) app, ref const(char)[] sql)
         auto ch = decode!(UseReplacementDchar.no)(sql, offset);
         switch (ch)
         {
-        case '?':
-            if (!quote)
-            {
-                app.put(sql[0..offset - 1]);
-                sql = sql[offset..$];
-                return true;
-            }
-            else
-            {
+            case '?':
+                if (!quote)
+                {
+                    app.put(sql[0..offset - 1]);
+                    sql = sql[offset..$];
+                    return true;
+                }
+                else
+                {
+                    goto default;
+                }
+            case '\'':
+            case '\"':
+            case '`':
+                if (quote == ch)
+                {
+                    quote = '\0';
+                }
+                else if (!quote)
+                {
+                    quote = ch;
+                }
                 goto default;
-            }
-        case '\'':
-        case '\"':
-        case '`':
-            if (quote == ch)
-            {
-                quote = '\0';
-            }
-            else if (!quote)
-            {
-                quote = ch;
-            }
-            goto default;
-        case '\\':
-            if (quote && (offset < sql.length))
-                decode!(UseReplacementDchar.no)(sql, offset);
-            goto default;
-        default:
-            break;
+            case '\\':
+                if (quote && (offset < sql.length))
+                    decode!(UseReplacementDchar.no)(sql, offset);
+                goto default;
+            default:
+                break;
         }
     }
     app.put(sql[0..offset]);

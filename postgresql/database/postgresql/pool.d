@@ -8,6 +8,7 @@ import std.concurrency;
 import std.datetime;
 import std.algorithm.searching : any;
 import std.algorithm.mutation : remove;
+import std.exception : enforce;
 
 import database.postgresql.connection;
 
@@ -96,6 +97,9 @@ final class ConnectionProvider
 
     void releaseConnection(ref Connection conn) shared
     {
+        enforce(conn.pooled, "This connection is not a managed connection in the pool.");
+        enforce(!conn.inTransaction, "This connection also has uncommitted or unrollbacked transaction.");
+
         (cast(Tid)_pool).send(new shared ConnenctionHolder(cast(shared Connection)conn));
         conn = null;
     }
@@ -172,7 +176,9 @@ private:
     {
         try
         {
-            return new Connection(_host, _user, _password, _database, _port, _options);
+            Connection conn = new Connection(_host, _user, _password, _database, _port, _options);
+            conn.pooled = true;
+            return conn;
         }
         catch (Exception e)
         {

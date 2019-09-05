@@ -53,7 +53,7 @@ template Unnull(U)
 }
 
 alias Unboth(T) = Unqual!(Unnull!T);
-enum isSomeDuration(T) = is(Unboth!T == Date) || is(Unboth!T == DateTime) || is(Unboth!T == SysTime) || is(Unboth!T == Duration);
+enum isSomeDuration(T) = is(Unboth!T == Date) || is(Unboth!T == DateTime) || is(Unboth!T == SysTime) || is(Unboth!T == Duration) || is(Unboth!T == TimeOfDay);
 enum isValueType(T) = isSomeDuration!(Unboth!T) || is(Unboth!T == MySQLValue) || (!is(Unboth!T == struct) && !is(Unboth!T == class));
 
 template isWritableDataMember(T, string Member)
@@ -325,74 +325,74 @@ struct MySQLValue
     {
         final switch(type_) with (ColumnTypes)
         {
-        case MYSQL_TYPE_NULL:
-            break;
-        case MYSQL_TYPE_TINY:
-            if (isSigned) formattedWrite(&app, "%d", *cast(ubyte*)buffer_.ptr);
-            else formattedWrite(&app, "%d", *cast(byte*)buffer_.ptr);
-            break;
-        case MYSQL_TYPE_YEAR:
-        case MYSQL_TYPE_SHORT:
-            if (isSigned) formattedWrite(&app, "%d", *cast(short*)buffer_.ptr);
-            else formattedWrite(&app, "%d", *cast(ushort*)buffer_.ptr);
-            break;
-        case MYSQL_TYPE_INT24:
-        case MYSQL_TYPE_LONG:
-            if (isSigned) formattedWrite(&app, "%d", *cast(int*)buffer_.ptr);
-            else formattedWrite(&app, "%d", *cast(uint*)buffer_.ptr);
-            break;
-        case MYSQL_TYPE_LONGLONG:
-            if (isSigned) formattedWrite(&app, "%d", *cast(long*)buffer_.ptr);
-            else formattedWrite(&app, "%d", *cast(ulong*)buffer_.ptr);
-            break;
-        case MYSQL_TYPE_FLOAT:
-            float f = *cast(float*)buffer_.ptr;
-            long l = cast(long)f;
-            f -= l;
-            string str = to!string(l) ~ ((f > 0) ? f.to!string[1 .. $] : "");
-            app.put(str);
-            //formattedWrite(&app, "%g", *cast(float*)buffer_.ptr);
-            break;
-        case MYSQL_TYPE_DOUBLE:
-            double d = *cast(double*)buffer_.ptr;
-            long l = cast(long)d;
-            d -= l;
-            string str = to!string(l) ~ ((d > 0) ? d.to!string[1 .. $] : "");
-            app.put(str);
-            //formattedWrite(&app, "%g", *cast(double*)buffer_.ptr);
-            break;
-        case MYSQL_TYPE_SET:
-        case MYSQL_TYPE_ENUM:
-        case MYSQL_TYPE_VARCHAR:
-        case MYSQL_TYPE_VAR_STRING:
-        case MYSQL_TYPE_STRING:
-        case MYSQL_TYPE_JSON:
-        case MYSQL_TYPE_NEWDECIMAL:
-        case MYSQL_TYPE_DECIMAL:
-        case MYSQL_TYPE_TINY_BLOB:
-        case MYSQL_TYPE_MEDIUM_BLOB:
-        case MYSQL_TYPE_LONG_BLOB:
-        case MYSQL_TYPE_BLOB:
-            app.put(*cast(string*)buffer_.ptr);
-            break;
-        case MYSQL_TYPE_BIT:
-        case MYSQL_TYPE_GEOMETRY:
-            formattedWrite(&app, "%s", *cast(ubyte[]*)buffer_.ptr);
-            break;
-        case MYSQL_TYPE_TIME:
-        case MYSQL_TYPE_TIME2:
-            formattedWrite(&app, "%s", (*cast(MySQLTime*)buffer_.ptr).to!Duration());
-            break;
-        case MYSQL_TYPE_DATE:
-        case MYSQL_TYPE_NEWDATE:
-        case MYSQL_TYPE_DATETIME:
-        case MYSQL_TYPE_DATETIME2:
-        case MYSQL_TYPE_TIMESTAMP:
-        case MYSQL_TYPE_TIMESTAMP2:
-            DateTime dt = (*cast(MySQLDateTime*)buffer_.ptr).to!DateTime();
-            app.put(dt.date().toISOExtString() ~ " " ~ dt.timeOfDay().toISOExtString());
-            //formattedWrite(&app, "%s", (*cast(MySQLDateTime*)buffer_.ptr).to!DateTime());
-            break;
+            case MYSQL_TYPE_NULL:
+                break;
+            case MYSQL_TYPE_TINY:
+                if (isSigned) formattedWrite(&app, "%d", *cast(ubyte*)buffer_.ptr);
+                else formattedWrite(&app, "%d", *cast(byte*)buffer_.ptr);
+                break;
+            case MYSQL_TYPE_YEAR:
+            case MYSQL_TYPE_SHORT:
+                if (isSigned) formattedWrite(&app, "%d", *cast(short*)buffer_.ptr);
+                else formattedWrite(&app, "%d", *cast(ushort*)buffer_.ptr);
+                break;
+            case MYSQL_TYPE_INT24:
+            case MYSQL_TYPE_LONG:
+                if (isSigned) formattedWrite(&app, "%d", *cast(int*)buffer_.ptr);
+                else formattedWrite(&app, "%d", *cast(uint*)buffer_.ptr);
+                break;
+            case MYSQL_TYPE_LONGLONG:
+                if (isSigned) formattedWrite(&app, "%d", *cast(long*)buffer_.ptr);
+                else formattedWrite(&app, "%d", *cast(ulong*)buffer_.ptr);
+                break;
+            case MYSQL_TYPE_FLOAT:
+                float f = *cast(float*)buffer_.ptr;
+                long l = cast(long)f;
+                f -= l;
+                string str = to!string(l) ~ ((f > 0) ? f.to!string[1 .. $] : "");
+                app.put(str);
+                //formattedWrite(&app, "%g", *cast(float*)buffer_.ptr);
+                break;
+            case MYSQL_TYPE_DOUBLE:
+                double d = *cast(double*)buffer_.ptr;
+                long l = cast(long)d;
+                d -= l;
+                string str = to!string(l) ~ ((d > 0) ? d.to!string[1 .. $] : "");
+                app.put(str);
+                //formattedWrite(&app, "%g", *cast(double*)buffer_.ptr);
+                break;
+            case MYSQL_TYPE_SET:
+            case MYSQL_TYPE_ENUM:
+            case MYSQL_TYPE_VARCHAR:
+            case MYSQL_TYPE_VAR_STRING:
+            case MYSQL_TYPE_STRING:
+            case MYSQL_TYPE_JSON:
+            case MYSQL_TYPE_NEWDECIMAL:
+            case MYSQL_TYPE_DECIMAL:
+            case MYSQL_TYPE_TINY_BLOB:
+            case MYSQL_TYPE_MEDIUM_BLOB:
+            case MYSQL_TYPE_LONG_BLOB:
+            case MYSQL_TYPE_BLOB:
+                app.put(*cast(string*)buffer_.ptr);
+                break;
+            case MYSQL_TYPE_BIT:
+            case MYSQL_TYPE_GEOMETRY:
+                formattedWrite(&app, "%s", *cast(ubyte[]*)buffer_.ptr);
+                break;
+            case MYSQL_TYPE_TIME:
+            case MYSQL_TYPE_TIME2:
+                formattedWrite(&app, "%s", (*cast(MySQLTime*)buffer_.ptr).to!Duration());
+                break;
+            case MYSQL_TYPE_DATE:
+            case MYSQL_TYPE_NEWDATE:
+            case MYSQL_TYPE_DATETIME:
+            case MYSQL_TYPE_DATETIME2:
+            case MYSQL_TYPE_TIMESTAMP:
+            case MYSQL_TYPE_TIMESTAMP2:
+                DateTime dt = (*cast(MySQLDateTime*)buffer_.ptr).to!DateTime();
+                app.put(dt.date().toISOExtString() ~ " " ~ dt.timeOfDay().toISOExtString());
+                //formattedWrite(&app, "%s", (*cast(MySQLDateTime*)buffer_.ptr).to!DateTime());
+                break;
         }
     }
 
@@ -442,22 +442,22 @@ struct MySQLValue
     {
         switch(type_) with (ColumnTypes)
         {
-        case MYSQL_TYPE_TINY:
-            return cast(T)(*cast(ubyte*)buffer_.ptr);
-        case MYSQL_TYPE_YEAR:
-        case MYSQL_TYPE_SHORT:
-            return cast(T)(*cast(ushort*)buffer_.ptr);
-        case MYSQL_TYPE_INT24:
-        case MYSQL_TYPE_LONG:
-            return cast(T)(*cast(uint*)buffer_.ptr);
-        case MYSQL_TYPE_LONGLONG:
-            return cast(T)(*cast(ulong*)buffer_.ptr);
-        case MYSQL_TYPE_FLOAT:
-            return cast(T)(*cast(float*)buffer_.ptr);
-        case MYSQL_TYPE_DOUBLE:
-            return cast(T)(*cast(double*)buffer_.ptr);
-        default:
-            throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
+            case MYSQL_TYPE_TINY:
+                return cast(T)(*cast(ubyte*)buffer_.ptr);
+            case MYSQL_TYPE_YEAR:
+            case MYSQL_TYPE_SHORT:
+                return cast(T)(*cast(ushort*)buffer_.ptr);
+            case MYSQL_TYPE_INT24:
+            case MYSQL_TYPE_LONG:
+                return cast(T)(*cast(uint*)buffer_.ptr);
+            case MYSQL_TYPE_LONGLONG:
+                return cast(T)(*cast(ulong*)buffer_.ptr);
+            case MYSQL_TYPE_FLOAT:
+                return cast(T)(*cast(float*)buffer_.ptr);
+            case MYSQL_TYPE_DOUBLE:
+                return cast(T)(*cast(double*)buffer_.ptr);
+            default:
+                throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
         }
     }
 
@@ -465,15 +465,15 @@ struct MySQLValue
     {
         switch(type_) with (ColumnTypes)
         {
-        case MYSQL_TYPE_DATE:
-        case MYSQL_TYPE_NEWDATE:
-        case MYSQL_TYPE_DATETIME:
-        case MYSQL_TYPE_DATETIME2:
-        case MYSQL_TYPE_TIMESTAMP:
-        case MYSQL_TYPE_TIMESTAMP2:
-            return (*cast(MySQLDateTime*)buffer_.ptr).to!T;
-        default:
-            throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
+            case MYSQL_TYPE_DATE:
+            case MYSQL_TYPE_NEWDATE:
+            case MYSQL_TYPE_DATETIME:
+            case MYSQL_TYPE_DATETIME2:
+            case MYSQL_TYPE_TIMESTAMP:
+            case MYSQL_TYPE_TIMESTAMP2:
+                return (*cast(MySQLDateTime*)buffer_.ptr).to!T;
+            default:
+                throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
         }
     }
 
@@ -481,18 +481,18 @@ struct MySQLValue
     {
         switch(type_) with (ColumnTypes)
         {
-        case MYSQL_TYPE_DATE:
-        case MYSQL_TYPE_NEWDATE:
-        case MYSQL_TYPE_DATETIME:
-        case MYSQL_TYPE_DATETIME2:
-        case MYSQL_TYPE_TIMESTAMP:
-        case MYSQL_TYPE_TIMESTAMP2:
-            return (*cast(MySQLDateTime*)buffer_.ptr).to!T;
-        case MYSQL_TYPE_TIME:
-        case MYSQL_TYPE_TIME2:
-            return (*cast(MySQLTime*)buffer_.ptr).to!T;
-        default:
-            throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
+            case MYSQL_TYPE_DATE:
+            case MYSQL_TYPE_NEWDATE:
+            case MYSQL_TYPE_DATETIME:
+            case MYSQL_TYPE_DATETIME2:
+            case MYSQL_TYPE_TIMESTAMP:
+            case MYSQL_TYPE_TIMESTAMP2:
+                return (*cast(MySQLDateTime*)buffer_.ptr).to!T;
+            case MYSQL_TYPE_TIME:
+            case MYSQL_TYPE_TIME2:
+                return (*cast(MySQLTime*)buffer_.ptr).to!T;
+            default:
+                throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
         }
     }
 
@@ -500,11 +500,11 @@ struct MySQLValue
     {
         switch(type_) with (ColumnTypes)
         {
-        case MYSQL_TYPE_TIME:
-        case MYSQL_TYPE_TIME2:
-            return (*cast(MySQLTime*)buffer_.ptr).to!T;
-        default:
-            throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
+            case MYSQL_TYPE_TIME:
+            case MYSQL_TYPE_TIME2:
+                return (*cast(MySQLTime*)buffer_.ptr).to!T;
+            default:
+                throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
         }
     }
 
@@ -517,24 +517,24 @@ struct MySQLValue
     {
         switch(type_) with (ColumnTypes)
         {
-        case MYSQL_TYPE_SET:
-        case MYSQL_TYPE_ENUM:
-        case MYSQL_TYPE_VARCHAR:
-        case MYSQL_TYPE_VAR_STRING:
-        case MYSQL_TYPE_STRING:
-        case MYSQL_TYPE_JSON:
-        case MYSQL_TYPE_NEWDECIMAL:
-        case MYSQL_TYPE_DECIMAL:
-            return (*cast(T*)buffer_.ptr).dup;
-        case MYSQL_TYPE_BIT:
-        case MYSQL_TYPE_TINY_BLOB:
-        case MYSQL_TYPE_MEDIUM_BLOB:
-        case MYSQL_TYPE_LONG_BLOB:
-        case MYSQL_TYPE_BLOB:
-        case MYSQL_TYPE_GEOMETRY:
-            return (*cast(T*)buffer_.ptr).dup;
-        default:
-            throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
+            case MYSQL_TYPE_SET:
+            case MYSQL_TYPE_ENUM:
+            case MYSQL_TYPE_VARCHAR:
+            case MYSQL_TYPE_VAR_STRING:
+            case MYSQL_TYPE_STRING:
+            case MYSQL_TYPE_JSON:
+            case MYSQL_TYPE_NEWDECIMAL:
+            case MYSQL_TYPE_DECIMAL:
+                return (*cast(T*)buffer_.ptr).dup;
+            case MYSQL_TYPE_BIT:
+            case MYSQL_TYPE_TINY_BLOB:
+            case MYSQL_TYPE_MEDIUM_BLOB:
+            case MYSQL_TYPE_LONG_BLOB:
+            case MYSQL_TYPE_BLOB:
+            case MYSQL_TYPE_GEOMETRY:
+                return (*cast(T*)buffer_.ptr).dup;
+            default:
+                throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
         }
     }
 
@@ -569,24 +569,24 @@ struct MySQLValue
     {
         switch(type_) with (ColumnTypes)
         {
-        case MYSQL_TYPE_SET:
-        case MYSQL_TYPE_ENUM:
-        case MYSQL_TYPE_VARCHAR:
-        case MYSQL_TYPE_VAR_STRING:
-        case MYSQL_TYPE_STRING:
-        case MYSQL_TYPE_JSON:
-        case MYSQL_TYPE_NEWDECIMAL:
-        case MYSQL_TYPE_DECIMAL:
-            return (*cast(T*)buffer_.ptr);
-        case MYSQL_TYPE_BIT:
-        case MYSQL_TYPE_TINY_BLOB:
-        case MYSQL_TYPE_MEDIUM_BLOB:
-        case MYSQL_TYPE_LONG_BLOB:
-        case MYSQL_TYPE_BLOB:
-        case MYSQL_TYPE_GEOMETRY:
-            return (*cast(T*)buffer_.ptr);
-        default:
-            throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
+            case MYSQL_TYPE_SET:
+            case MYSQL_TYPE_ENUM:
+            case MYSQL_TYPE_VARCHAR:
+            case MYSQL_TYPE_VAR_STRING:
+            case MYSQL_TYPE_STRING:
+            case MYSQL_TYPE_JSON:
+            case MYSQL_TYPE_NEWDECIMAL:
+            case MYSQL_TYPE_DECIMAL:
+                return (*cast(T*)buffer_.ptr);
+            case MYSQL_TYPE_BIT:
+            case MYSQL_TYPE_TINY_BLOB:
+            case MYSQL_TYPE_MEDIUM_BLOB:
+            case MYSQL_TYPE_LONG_BLOB:
+            case MYSQL_TYPE_BLOB:
+            case MYSQL_TYPE_GEOMETRY:
+                return (*cast(T*)buffer_.ptr);
+            default:
+                throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
         }
     }
 
@@ -609,43 +609,43 @@ struct MySQLValue
     {
         final switch(type_) with (ColumnTypes)
         {
-        case MYSQL_TYPE_NULL:
-            return false;
-        case MYSQL_TYPE_TINY:
-        case MYSQL_TYPE_YEAR:
-        case MYSQL_TYPE_SHORT:
-        case MYSQL_TYPE_INT24:
-        case MYSQL_TYPE_LONG:
-        case MYSQL_TYPE_LONGLONG:
-        case MYSQL_TYPE_FLOAT:
-        case MYSQL_TYPE_DOUBLE:
-            return false;
-        case MYSQL_TYPE_SET:
-        case MYSQL_TYPE_ENUM:
-        case MYSQL_TYPE_VARCHAR:
-        case MYSQL_TYPE_VAR_STRING:
-        case MYSQL_TYPE_STRING:
-        case MYSQL_TYPE_JSON:
-        case MYSQL_TYPE_NEWDECIMAL:
-        case MYSQL_TYPE_DECIMAL:
-        case MYSQL_TYPE_TINY_BLOB:
-        case MYSQL_TYPE_MEDIUM_BLOB:
-        case MYSQL_TYPE_LONG_BLOB:
-        case MYSQL_TYPE_BLOB:
-            return true;
-        case MYSQL_TYPE_BIT:
-        case MYSQL_TYPE_GEOMETRY:
-            return false;
-        case MYSQL_TYPE_TIME:
-        case MYSQL_TYPE_TIME2:
-            return false;
-        case MYSQL_TYPE_DATE:
-        case MYSQL_TYPE_NEWDATE:
-        case MYSQL_TYPE_DATETIME:
-        case MYSQL_TYPE_DATETIME2:
-        case MYSQL_TYPE_TIMESTAMP:
-        case MYSQL_TYPE_TIMESTAMP2:
-            return false;
+            case MYSQL_TYPE_NULL:
+                return false;
+            case MYSQL_TYPE_TINY:
+            case MYSQL_TYPE_YEAR:
+            case MYSQL_TYPE_SHORT:
+            case MYSQL_TYPE_INT24:
+            case MYSQL_TYPE_LONG:
+            case MYSQL_TYPE_LONGLONG:
+            case MYSQL_TYPE_FLOAT:
+            case MYSQL_TYPE_DOUBLE:
+                return false;
+            case MYSQL_TYPE_SET:
+            case MYSQL_TYPE_ENUM:
+            case MYSQL_TYPE_VARCHAR:
+            case MYSQL_TYPE_VAR_STRING:
+            case MYSQL_TYPE_STRING:
+            case MYSQL_TYPE_JSON:
+            case MYSQL_TYPE_NEWDECIMAL:
+            case MYSQL_TYPE_DECIMAL:
+            case MYSQL_TYPE_TINY_BLOB:
+            case MYSQL_TYPE_MEDIUM_BLOB:
+            case MYSQL_TYPE_LONG_BLOB:
+            case MYSQL_TYPE_BLOB:
+                return true;
+            case MYSQL_TYPE_BIT:
+            case MYSQL_TYPE_GEOMETRY:
+                return false;
+            case MYSQL_TYPE_TIME:
+            case MYSQL_TYPE_TIME2:
+                return false;
+            case MYSQL_TYPE_DATE:
+            case MYSQL_TYPE_NEWDATE:
+            case MYSQL_TYPE_DATETIME:
+            case MYSQL_TYPE_DATETIME2:
+            case MYSQL_TYPE_TIMESTAMP:
+            case MYSQL_TYPE_TIMESTAMP2:
+                return false;
         }
     }
 
@@ -653,43 +653,43 @@ struct MySQLValue
     {
         final switch(type_) with (ColumnTypes)
         {
-        case MYSQL_TYPE_NULL:
-            return false;
-        case MYSQL_TYPE_TINY:
-        case MYSQL_TYPE_YEAR:
-        case MYSQL_TYPE_SHORT:
-        case MYSQL_TYPE_INT24:
-        case MYSQL_TYPE_LONG:
-        case MYSQL_TYPE_LONGLONG:
-        case MYSQL_TYPE_FLOAT:
-        case MYSQL_TYPE_DOUBLE:
-            return true;
-        case MYSQL_TYPE_SET:
-        case MYSQL_TYPE_ENUM:
-        case MYSQL_TYPE_VARCHAR:
-        case MYSQL_TYPE_VAR_STRING:
-        case MYSQL_TYPE_STRING:
-        case MYSQL_TYPE_JSON:
-        case MYSQL_TYPE_NEWDECIMAL:
-        case MYSQL_TYPE_DECIMAL:
-        case MYSQL_TYPE_TINY_BLOB:
-        case MYSQL_TYPE_MEDIUM_BLOB:
-        case MYSQL_TYPE_LONG_BLOB:
-        case MYSQL_TYPE_BLOB:
-            return false;
-        case MYSQL_TYPE_BIT:
-        case MYSQL_TYPE_GEOMETRY:
-            return false;
-        case MYSQL_TYPE_TIME:
-        case MYSQL_TYPE_TIME2:
-            return false;
-        case MYSQL_TYPE_DATE:
-        case MYSQL_TYPE_NEWDATE:
-        case MYSQL_TYPE_DATETIME:
-        case MYSQL_TYPE_DATETIME2:
-        case MYSQL_TYPE_TIMESTAMP:
-        case MYSQL_TYPE_TIMESTAMP2:
-            return false;
+            case MYSQL_TYPE_NULL:
+                return false;
+            case MYSQL_TYPE_TINY:
+            case MYSQL_TYPE_YEAR:
+            case MYSQL_TYPE_SHORT:
+            case MYSQL_TYPE_INT24:
+            case MYSQL_TYPE_LONG:
+            case MYSQL_TYPE_LONGLONG:
+            case MYSQL_TYPE_FLOAT:
+            case MYSQL_TYPE_DOUBLE:
+                return true;
+            case MYSQL_TYPE_SET:
+            case MYSQL_TYPE_ENUM:
+            case MYSQL_TYPE_VARCHAR:
+            case MYSQL_TYPE_VAR_STRING:
+            case MYSQL_TYPE_STRING:
+            case MYSQL_TYPE_JSON:
+            case MYSQL_TYPE_NEWDECIMAL:
+            case MYSQL_TYPE_DECIMAL:
+            case MYSQL_TYPE_TINY_BLOB:
+            case MYSQL_TYPE_MEDIUM_BLOB:
+            case MYSQL_TYPE_LONG_BLOB:
+            case MYSQL_TYPE_BLOB:
+                return false;
+            case MYSQL_TYPE_BIT:
+            case MYSQL_TYPE_GEOMETRY:
+                return false;
+            case MYSQL_TYPE_TIME:
+            case MYSQL_TYPE_TIME2:
+                return false;
+            case MYSQL_TYPE_DATE:
+            case MYSQL_TYPE_NEWDATE:
+            case MYSQL_TYPE_DATETIME:
+            case MYSQL_TYPE_DATETIME2:
+            case MYSQL_TYPE_TIMESTAMP:
+            case MYSQL_TYPE_TIMESTAMP2:
+                return false;
         }
     }
 
@@ -697,44 +697,44 @@ struct MySQLValue
     {
         final switch(type_) with (ColumnTypes)
         {
-        case MYSQL_TYPE_NULL:
-            return false;
-        case MYSQL_TYPE_TINY:
-        case MYSQL_TYPE_YEAR:
-        case MYSQL_TYPE_SHORT:
-        case MYSQL_TYPE_INT24:
-        case MYSQL_TYPE_LONG:
-        case MYSQL_TYPE_LONGLONG:
-            return false;
-        case MYSQL_TYPE_FLOAT:
-        case MYSQL_TYPE_DOUBLE:
-            return true;
-        case MYSQL_TYPE_SET:
-        case MYSQL_TYPE_ENUM:
-        case MYSQL_TYPE_VARCHAR:
-        case MYSQL_TYPE_VAR_STRING:
-        case MYSQL_TYPE_STRING:
-        case MYSQL_TYPE_JSON:
-        case MYSQL_TYPE_NEWDECIMAL:
-        case MYSQL_TYPE_DECIMAL:
-        case MYSQL_TYPE_TINY_BLOB:
-        case MYSQL_TYPE_MEDIUM_BLOB:
-        case MYSQL_TYPE_LONG_BLOB:
-        case MYSQL_TYPE_BLOB:
-            return false;
-        case MYSQL_TYPE_BIT:
-        case MYSQL_TYPE_GEOMETRY:
-            return false;
-        case MYSQL_TYPE_TIME:
-        case MYSQL_TYPE_TIME2:
-            return false;
-        case MYSQL_TYPE_DATE:
-        case MYSQL_TYPE_NEWDATE:
-        case MYSQL_TYPE_DATETIME:
-        case MYSQL_TYPE_DATETIME2:
-        case MYSQL_TYPE_TIMESTAMP:
-        case MYSQL_TYPE_TIMESTAMP2:
-            return false;
+            case MYSQL_TYPE_NULL:
+                return false;
+            case MYSQL_TYPE_TINY:
+            case MYSQL_TYPE_YEAR:
+            case MYSQL_TYPE_SHORT:
+            case MYSQL_TYPE_INT24:
+            case MYSQL_TYPE_LONG:
+            case MYSQL_TYPE_LONGLONG:
+                return false;
+            case MYSQL_TYPE_FLOAT:
+            case MYSQL_TYPE_DOUBLE:
+                return true;
+            case MYSQL_TYPE_SET:
+            case MYSQL_TYPE_ENUM:
+            case MYSQL_TYPE_VARCHAR:
+            case MYSQL_TYPE_VAR_STRING:
+            case MYSQL_TYPE_STRING:
+            case MYSQL_TYPE_JSON:
+            case MYSQL_TYPE_NEWDECIMAL:
+            case MYSQL_TYPE_DECIMAL:
+            case MYSQL_TYPE_TINY_BLOB:
+            case MYSQL_TYPE_MEDIUM_BLOB:
+            case MYSQL_TYPE_LONG_BLOB:
+            case MYSQL_TYPE_BLOB:
+                return false;
+            case MYSQL_TYPE_BIT:
+            case MYSQL_TYPE_GEOMETRY:
+                return false;
+            case MYSQL_TYPE_TIME:
+            case MYSQL_TYPE_TIME2:
+                return false;
+            case MYSQL_TYPE_DATE:
+            case MYSQL_TYPE_NEWDATE:
+            case MYSQL_TYPE_DATETIME:
+            case MYSQL_TYPE_DATETIME2:
+            case MYSQL_TYPE_TIMESTAMP:
+            case MYSQL_TYPE_TIMESTAMP2:
+                return false;
         }
     }
 
@@ -742,43 +742,43 @@ struct MySQLValue
     {
         final switch(type_) with (ColumnTypes)
         {
-        case MYSQL_TYPE_NULL:
-            return false;
-        case MYSQL_TYPE_TINY:
-        case MYSQL_TYPE_YEAR:
-        case MYSQL_TYPE_SHORT:
-        case MYSQL_TYPE_INT24:
-        case MYSQL_TYPE_LONG:
-        case MYSQL_TYPE_LONGLONG:
-        case MYSQL_TYPE_FLOAT:
-        case MYSQL_TYPE_DOUBLE:
-            return false;
-        case MYSQL_TYPE_SET:
-        case MYSQL_TYPE_ENUM:
-        case MYSQL_TYPE_VARCHAR:
-        case MYSQL_TYPE_VAR_STRING:
-        case MYSQL_TYPE_STRING:
-        case MYSQL_TYPE_JSON:
-        case MYSQL_TYPE_NEWDECIMAL:
-        case MYSQL_TYPE_DECIMAL:
-        case MYSQL_TYPE_TINY_BLOB:
-        case MYSQL_TYPE_MEDIUM_BLOB:
-        case MYSQL_TYPE_LONG_BLOB:
-        case MYSQL_TYPE_BLOB:
-            return false;
-        case MYSQL_TYPE_BIT:
-        case MYSQL_TYPE_GEOMETRY:
-            return false;
-        case MYSQL_TYPE_TIME:
-        case MYSQL_TYPE_TIME2:
-            return true;
-        case MYSQL_TYPE_DATE:
-        case MYSQL_TYPE_NEWDATE:
-        case MYSQL_TYPE_DATETIME:
-        case MYSQL_TYPE_DATETIME2:
-        case MYSQL_TYPE_TIMESTAMP:
-        case MYSQL_TYPE_TIMESTAMP2:
-            return false;
+            case MYSQL_TYPE_NULL:
+                return false;
+            case MYSQL_TYPE_TINY:
+            case MYSQL_TYPE_YEAR:
+            case MYSQL_TYPE_SHORT:
+            case MYSQL_TYPE_INT24:
+            case MYSQL_TYPE_LONG:
+            case MYSQL_TYPE_LONGLONG:
+            case MYSQL_TYPE_FLOAT:
+            case MYSQL_TYPE_DOUBLE:
+                return false;
+            case MYSQL_TYPE_SET:
+            case MYSQL_TYPE_ENUM:
+            case MYSQL_TYPE_VARCHAR:
+            case MYSQL_TYPE_VAR_STRING:
+            case MYSQL_TYPE_STRING:
+            case MYSQL_TYPE_JSON:
+            case MYSQL_TYPE_NEWDECIMAL:
+            case MYSQL_TYPE_DECIMAL:
+            case MYSQL_TYPE_TINY_BLOB:
+            case MYSQL_TYPE_MEDIUM_BLOB:
+            case MYSQL_TYPE_LONG_BLOB:
+            case MYSQL_TYPE_BLOB:
+                return false;
+            case MYSQL_TYPE_BIT:
+            case MYSQL_TYPE_GEOMETRY:
+                return false;
+            case MYSQL_TYPE_TIME:
+            case MYSQL_TYPE_TIME2:
+                return true;
+            case MYSQL_TYPE_DATE:
+            case MYSQL_TYPE_NEWDATE:
+            case MYSQL_TYPE_DATETIME:
+            case MYSQL_TYPE_DATETIME2:
+            case MYSQL_TYPE_TIMESTAMP:
+            case MYSQL_TYPE_TIMESTAMP2:
+                return false;
         }
     }
 
@@ -787,43 +787,43 @@ struct MySQLValue
     bool isDateTime() const {
         final switch(type_) with (ColumnTypes)
         {
-        case MYSQL_TYPE_NULL:
-            return false;
-        case MYSQL_TYPE_TINY:
-        case MYSQL_TYPE_YEAR:
-        case MYSQL_TYPE_SHORT:
-        case MYSQL_TYPE_INT24:
-        case MYSQL_TYPE_LONG:
-        case MYSQL_TYPE_LONGLONG:
-        case MYSQL_TYPE_FLOAT:
-        case MYSQL_TYPE_DOUBLE:
-            return false;
-        case MYSQL_TYPE_SET:
-        case MYSQL_TYPE_ENUM:
-        case MYSQL_TYPE_VARCHAR:
-        case MYSQL_TYPE_VAR_STRING:
-        case MYSQL_TYPE_STRING:
-        case MYSQL_TYPE_JSON:
-        case MYSQL_TYPE_NEWDECIMAL:
-        case MYSQL_TYPE_DECIMAL:
-        case MYSQL_TYPE_TINY_BLOB:
-        case MYSQL_TYPE_MEDIUM_BLOB:
-        case MYSQL_TYPE_LONG_BLOB:
-        case MYSQL_TYPE_BLOB:
-            return false;
-        case MYSQL_TYPE_BIT:
-        case MYSQL_TYPE_GEOMETRY:
-            return false;
-        case MYSQL_TYPE_TIME:
-        case MYSQL_TYPE_TIME2:
-            return false;
-        case MYSQL_TYPE_DATE:
-        case MYSQL_TYPE_NEWDATE:
-        case MYSQL_TYPE_DATETIME:
-        case MYSQL_TYPE_DATETIME2:
-        case MYSQL_TYPE_TIMESTAMP:
-        case MYSQL_TYPE_TIMESTAMP2:
-            return true;
+            case MYSQL_TYPE_NULL:
+                return false;
+            case MYSQL_TYPE_TINY:
+            case MYSQL_TYPE_YEAR:
+            case MYSQL_TYPE_SHORT:
+            case MYSQL_TYPE_INT24:
+            case MYSQL_TYPE_LONG:
+            case MYSQL_TYPE_LONGLONG:
+            case MYSQL_TYPE_FLOAT:
+            case MYSQL_TYPE_DOUBLE:
+                return false;
+            case MYSQL_TYPE_SET:
+            case MYSQL_TYPE_ENUM:
+            case MYSQL_TYPE_VARCHAR:
+            case MYSQL_TYPE_VAR_STRING:
+            case MYSQL_TYPE_STRING:
+            case MYSQL_TYPE_JSON:
+            case MYSQL_TYPE_NEWDECIMAL:
+            case MYSQL_TYPE_DECIMAL:
+            case MYSQL_TYPE_TINY_BLOB:
+            case MYSQL_TYPE_MEDIUM_BLOB:
+            case MYSQL_TYPE_LONG_BLOB:
+            case MYSQL_TYPE_BLOB:
+                return false;
+            case MYSQL_TYPE_BIT:
+            case MYSQL_TYPE_GEOMETRY:
+                return false;
+            case MYSQL_TYPE_TIME:
+            case MYSQL_TYPE_TIME2:
+                return false;
+            case MYSQL_TYPE_DATE:
+            case MYSQL_TYPE_NEWDATE:
+            case MYSQL_TYPE_DATETIME:
+            case MYSQL_TYPE_DATETIME2:
+            case MYSQL_TYPE_TIMESTAMP:
+            case MYSQL_TYPE_TIMESTAMP2:
+                return true;
         }
     }
 
@@ -916,25 +916,25 @@ auto eatMySQLTime(ref InputPacket packet)
     MySQLTime time;
     switch(packet.eat!ubyte)
     {
-    case 12:
-        time.negative = packet.eat!ubyte;
-        time.days = packet.eat!uint;
-        time.hours = packet.eat!ubyte;
-        time.mins = packet.eat!ubyte;
-        time.secs = packet.eat!ubyte;
-        time.usecs = packet.eat!uint;
-        break;
-    case 8:
-        time.negative = packet.eat!ubyte;
-        time.days = packet.eat!uint;
-        time.hours = packet.eat!ubyte;
-        time.mins = packet.eat!ubyte;
-        time.secs = packet.eat!ubyte;
-        break;
-    case 0:
-        break;
-    default:
-        throw new MySQLProtocolException("Bad time struct format");
+        case 12:
+            time.negative = packet.eat!ubyte;
+            time.days = packet.eat!uint;
+            time.hours = packet.eat!ubyte;
+            time.mins = packet.eat!ubyte;
+            time.secs = packet.eat!ubyte;
+            time.usecs = packet.eat!uint;
+            break;
+        case 8:
+            time.negative = packet.eat!ubyte;
+            time.days = packet.eat!uint;
+            time.hours = packet.eat!ubyte;
+            time.mins = packet.eat!ubyte;
+            time.secs = packet.eat!ubyte;
+            break;
+        case 0:
+            break;
+        default:
+            throw new MySQLProtocolException("Bad time struct format");
     }
 
     return time;
@@ -1055,32 +1055,32 @@ auto eatMySQLDateTime(ref InputPacket packet)
     MySQLDateTime time;
     switch(packet.eat!ubyte)
     {
-    case 11:
-        time.year = packet.eat!ushort;
-        time.month = packet.eat!ubyte;
-        time.day = packet.eat!ubyte;
-        time.hour = packet.eat!ubyte;
-        time.min = packet.eat!ubyte;
-        time.sec = packet.eat!ubyte;
-        time.usec = packet.eat!uint;
-        break;
-    case 7:
-        time.year = packet.eat!ushort;
-        time.month = packet.eat!ubyte;
-        time.day = packet.eat!ubyte;
-        time.hour = packet.eat!ubyte;
-        time.min = packet.eat!ubyte;
-        time.sec = packet.eat!ubyte;
-        break;
-    case 4:
-        time.year = packet.eat!ushort;
-        time.month = packet.eat!ubyte;
-        time.day = packet.eat!ubyte;
-        break;
-    case 0:
-        break;
-    default:
-        throw new MySQLProtocolException("Bad datetime struct format");
+        case 11:
+            time.year = packet.eat!ushort;
+            time.month = packet.eat!ubyte;
+            time.day = packet.eat!ubyte;
+            time.hour = packet.eat!ubyte;
+            time.min = packet.eat!ubyte;
+            time.sec = packet.eat!ubyte;
+            time.usec = packet.eat!uint;
+            break;
+        case 7:
+            time.year = packet.eat!ushort;
+            time.month = packet.eat!ubyte;
+            time.day = packet.eat!ubyte;
+            time.hour = packet.eat!ubyte;
+            time.min = packet.eat!ubyte;
+            time.sec = packet.eat!ubyte;
+            break;
+        case 4:
+            time.year = packet.eat!ushort;
+            time.month = packet.eat!ubyte;
+            time.day = packet.eat!ubyte;
+            break;
+        case 0:
+            break;
+        default:
+            throw new MySQLProtocolException("Bad datetime struct format");
     }
 
     return time;
@@ -1120,13 +1120,13 @@ auto parseMySQLTime(const(char)[] x)
         time.usecs = x.parse!uint;
         switch (6 - max(6, x.length))
         {
-        case 0: break;
-        case 1: time.usecs *= 10; break;
-        case 2: time.usecs *= 100; break;
-        case 3: time.usecs *= 1_000; break;
-        case 4: time.usecs *= 10_000; break;
-        case 5: time.usecs *= 100_000; break;
-        default: assert("Bad datetime string format"); break;
+            case 0: break;
+            case 1: time.usecs *= 10; break;
+            case 2: time.usecs *= 100; break;
+            case 3: time.usecs *= 1_000; break;
+            case 4: time.usecs *= 10_000; break;
+            case 5: time.usecs *= 100_000; break;
+            default: assert("Bad datetime string format"); break;
         }
     }
 
@@ -1157,13 +1157,13 @@ auto parseMySQLDateTime(const(char)[] x)
             time.usec = x.parse!uint;
             switch (6 - max(6, x.length))
             {
-            case 0: break;
-            case 1: time.usec *= 10; break;
-            case 2: time.usec *= 100; break;
-            case 3: time.usec *= 1_000; break;
-            case 4: time.usec *= 10_000; break;
-            case 5: time.usec *= 100_000; break;
-            default: assert("Bad datetime string format"); break;
+                case 0: break;
+                case 1: time.usec *= 10; break;
+                case 2: time.usec *= 100; break;
+                case 3: time.usec *= 1_000; break;
+                case 4: time.usec *= 10_000; break;
+                case 5: time.usec *= 100_000; break;
+                default: assert("Bad datetime string format"); break;
             }
         }
     }
@@ -1174,67 +1174,68 @@ auto parseMySQLDateTime(const(char)[] x)
 void eatValue(ref InputPacket packet, ref const MySQLColumn column, ref MySQLValue value)
 {
     auto signed = (column.flags & FieldFlags.UNSIGNED_FLAG) == 0;
-    final switch(column.type) with (ColumnTypes) {
-    case MYSQL_TYPE_NULL:
-        value = MySQLValue(column.name, column.type, signed, null, 0);
-        break;
-    case MYSQL_TYPE_TINY:
-        auto x = packet.eat!ubyte;
-        value = MySQLValue(column.name, column.type, signed, &x, 1);
-        break;
-    case MYSQL_TYPE_YEAR:
-    case MYSQL_TYPE_SHORT:
-        auto x = packet.eat!ushort;
-        value = MySQLValue(column.name, column.type, signed, &x, 2);
-        break;
-    case MYSQL_TYPE_INT24:
-    case MYSQL_TYPE_LONG:
-        auto x = packet.eat!uint;
-        value = MySQLValue(column.name, column.type, signed, &x, 4);
-        break;
-    case MYSQL_TYPE_DOUBLE:
-    case MYSQL_TYPE_LONGLONG:
-        auto x = packet.eat!ulong;
-        value = MySQLValue(column.name, column.type, signed, &x, 8);
-        break;
-    case MYSQL_TYPE_FLOAT:
-        auto x = packet.eat!float;
-        value = MySQLValue(column.name, column.type, signed, &x, 4);
-        break;
-    case MYSQL_TYPE_SET:
-    case MYSQL_TYPE_ENUM:
-    case MYSQL_TYPE_VARCHAR:
-    case MYSQL_TYPE_VAR_STRING:
-    case MYSQL_TYPE_STRING:
-    case MYSQL_TYPE_JSON:
-    case MYSQL_TYPE_NEWDECIMAL:
-    case MYSQL_TYPE_DECIMAL:
-        auto x = packet.eat!(const(char)[])(cast(size_t)packet.eatLenEnc());
-        value = MySQLValue(column.name, column.type, signed, &x, typeof(x).sizeof);
-        break;
-    case MYSQL_TYPE_BIT:
-    case MYSQL_TYPE_TINY_BLOB:
-    case MYSQL_TYPE_MEDIUM_BLOB:
-    case MYSQL_TYPE_LONG_BLOB:
-    case MYSQL_TYPE_BLOB:
-    case MYSQL_TYPE_GEOMETRY:
-        auto x = packet.eat!(const(ubyte)[])(cast(size_t)packet.eatLenEnc());
-        value = MySQLValue(column.name, column.type, signed, &x, typeof(x).sizeof);
-        break;
-    case MYSQL_TYPE_TIME:
-    case MYSQL_TYPE_TIME2:
-        auto x = eatMySQLTime(packet);
-        value = MySQLValue(column.name, column.type, signed, &x, typeof(x).sizeof);
-        break;
-    case MYSQL_TYPE_DATE:
-    case MYSQL_TYPE_NEWDATE:
-    case MYSQL_TYPE_DATETIME:
-    case MYSQL_TYPE_DATETIME2:
-    case MYSQL_TYPE_TIMESTAMP:
-    case MYSQL_TYPE_TIMESTAMP2:
-        auto x = eatMySQLDateTime(packet);
-        value = x.valid() ? MySQLValue(column.name, column.type, signed, &x, typeof(x).sizeof) : MySQLValue(column.name, ColumnTypes.MYSQL_TYPE_NULL, signed, null, 0);
-        break;
+    final switch(column.type) with (ColumnTypes)
+    {
+        case MYSQL_TYPE_NULL:
+            value = MySQLValue(column.name, column.type, signed, null, 0);
+            break;
+        case MYSQL_TYPE_TINY:
+            auto x = packet.eat!ubyte;
+            value = MySQLValue(column.name, column.type, signed, &x, 1);
+            break;
+        case MYSQL_TYPE_YEAR:
+        case MYSQL_TYPE_SHORT:
+            auto x = packet.eat!ushort;
+            value = MySQLValue(column.name, column.type, signed, &x, 2);
+            break;
+        case MYSQL_TYPE_INT24:
+        case MYSQL_TYPE_LONG:
+            auto x = packet.eat!uint;
+            value = MySQLValue(column.name, column.type, signed, &x, 4);
+            break;
+        case MYSQL_TYPE_DOUBLE:
+        case MYSQL_TYPE_LONGLONG:
+            auto x = packet.eat!ulong;
+            value = MySQLValue(column.name, column.type, signed, &x, 8);
+            break;
+        case MYSQL_TYPE_FLOAT:
+            auto x = packet.eat!float;
+            value = MySQLValue(column.name, column.type, signed, &x, 4);
+            break;
+        case MYSQL_TYPE_SET:
+        case MYSQL_TYPE_ENUM:
+        case MYSQL_TYPE_VARCHAR:
+        case MYSQL_TYPE_VAR_STRING:
+        case MYSQL_TYPE_STRING:
+        case MYSQL_TYPE_JSON:
+        case MYSQL_TYPE_NEWDECIMAL:
+        case MYSQL_TYPE_DECIMAL:
+            auto x = packet.eat!(const(char)[])(cast(size_t)packet.eatLenEnc());
+            value = MySQLValue(column.name, column.type, signed, &x, typeof(x).sizeof);
+            break;
+        case MYSQL_TYPE_BIT:
+        case MYSQL_TYPE_TINY_BLOB:
+        case MYSQL_TYPE_MEDIUM_BLOB:
+        case MYSQL_TYPE_LONG_BLOB:
+        case MYSQL_TYPE_BLOB:
+        case MYSQL_TYPE_GEOMETRY:
+            auto x = packet.eat!(const(ubyte)[])(cast(size_t)packet.eatLenEnc());
+            value = MySQLValue(column.name, column.type, signed, &x, typeof(x).sizeof);
+            break;
+        case MYSQL_TYPE_TIME:
+        case MYSQL_TYPE_TIME2:
+            auto x = eatMySQLTime(packet);
+            value = MySQLValue(column.name, column.type, signed, &x, typeof(x).sizeof);
+            break;
+        case MYSQL_TYPE_DATE:
+        case MYSQL_TYPE_NEWDATE:
+        case MYSQL_TYPE_DATETIME:
+        case MYSQL_TYPE_DATETIME2:
+        case MYSQL_TYPE_TIMESTAMP:
+        case MYSQL_TYPE_TIMESTAMP2:
+            auto x = eatMySQLDateTime(packet);
+            value = x.valid() ? MySQLValue(column.name, column.type, signed, &x, typeof(x).sizeof) : MySQLValue(column.name, ColumnTypes.MYSQL_TYPE_NULL, signed, null, 0);
+            break;
     }
 }
 
@@ -1244,67 +1245,67 @@ void eatValueText(ref InputPacket packet, ref const MySQLColumn column, ref MySQ
     auto svalue = (column.type != ColumnTypes.MYSQL_TYPE_NULL) ? cast(string)(packet.eat!(const(char)[])(cast(size_t)packet.eatLenEnc())) : string.init;
     final switch(column.type) with (ColumnTypes)
     {
-    case MYSQL_TYPE_NULL:
-        value = MySQLValue(column.name, column.type, signed, null, 0);
-        break;
-    case MYSQL_TYPE_TINY:
-        auto x = (svalue.ptr[0] == '-') ? cast(ubyte)(-1 * svalue[1..$].to!byte) : svalue.to!ubyte;
-        value = MySQLValue(column.name, column.type, signed, &x, 1);
-        break;
-    case MYSQL_TYPE_YEAR:
-    case MYSQL_TYPE_SHORT:
-        auto x = (svalue.ptr[0] == '-') ? cast(ushort)(-1 * svalue[1..$].to!short) : svalue.to!ushort;
-        value = MySQLValue(column.name, column.type, signed, &x, 2);
-        break;
-    case MYSQL_TYPE_INT24:
-    case MYSQL_TYPE_LONG:
-        auto x = (svalue.ptr[0] == '-') ? cast(uint)(-svalue[1..$].to!int) : svalue.to!uint;
-        value = MySQLValue(column.name, column.type, signed, &x, 4);
-        break;
-    case MYSQL_TYPE_LONGLONG:
-        auto x = (svalue.ptr[0] == '-') ? cast(ulong)(-svalue[1..$].to!long) : svalue.to!ulong;
-        value = MySQLValue(column.name, column.type, signed, &x, 8);
-        break;
-    case MYSQL_TYPE_DOUBLE:
-        auto x = svalue.to!double;
-        value = MySQLValue(column.name, column.type, signed, &x, 8);
-        break;
-    case MYSQL_TYPE_FLOAT:
-        auto x = svalue.to!float;
-        value = MySQLValue(column.name, column.type, signed, &x, 4);
-        break;
-    case MYSQL_TYPE_SET:
-    case MYSQL_TYPE_ENUM:
-    case MYSQL_TYPE_VARCHAR:
-    case MYSQL_TYPE_VAR_STRING:
-    case MYSQL_TYPE_STRING:
-    case MYSQL_TYPE_JSON:
-    case MYSQL_TYPE_NEWDECIMAL:
-    case MYSQL_TYPE_DECIMAL:
-        value = MySQLValue(column.name, column.type, signed, &svalue, typeof(svalue).sizeof);
-        break;
-    case MYSQL_TYPE_BIT:
-    case MYSQL_TYPE_TINY_BLOB:
-    case MYSQL_TYPE_MEDIUM_BLOB:
-    case MYSQL_TYPE_LONG_BLOB:
-    case MYSQL_TYPE_BLOB:
-    case MYSQL_TYPE_GEOMETRY:
-        value = MySQLValue(column.name, column.type, signed, &svalue, typeof(svalue).sizeof);
-        break;
-    case MYSQL_TYPE_TIME:
-    case MYSQL_TYPE_TIME2:
-        auto x = parseMySQLTime(svalue);
-        value = MySQLValue(column.name, column.type, signed, &x, typeof(x).sizeof);
-        break;
-    case MYSQL_TYPE_DATE:
-    case MYSQL_TYPE_NEWDATE:
-    case MYSQL_TYPE_DATETIME:
-    case MYSQL_TYPE_DATETIME2:
-    case MYSQL_TYPE_TIMESTAMP:
-    case MYSQL_TYPE_TIMESTAMP2:
-        auto x = parseMySQLDateTime(svalue);
-        value = x.valid() ? MySQLValue(column.name, column.type, signed, &x, typeof(x).sizeof) : MySQLValue(column.name, ColumnTypes.MYSQL_TYPE_NULL, signed, null, 0);
-        break;
+        case MYSQL_TYPE_NULL:
+            value = MySQLValue(column.name, column.type, signed, null, 0);
+            break;
+        case MYSQL_TYPE_TINY:
+            auto x = (svalue.ptr[0] == '-') ? cast(ubyte)(-1 * svalue[1..$].to!byte) : svalue.to!ubyte;
+            value = MySQLValue(column.name, column.type, signed, &x, 1);
+            break;
+        case MYSQL_TYPE_YEAR:
+        case MYSQL_TYPE_SHORT:
+            auto x = (svalue.ptr[0] == '-') ? cast(ushort)(-1 * svalue[1..$].to!short) : svalue.to!ushort;
+            value = MySQLValue(column.name, column.type, signed, &x, 2);
+            break;
+        case MYSQL_TYPE_INT24:
+        case MYSQL_TYPE_LONG:
+            auto x = (svalue.ptr[0] == '-') ? cast(uint)(-svalue[1..$].to!int) : svalue.to!uint;
+            value = MySQLValue(column.name, column.type, signed, &x, 4);
+            break;
+        case MYSQL_TYPE_LONGLONG:
+            auto x = (svalue.ptr[0] == '-') ? cast(ulong)(-svalue[1..$].to!long) : svalue.to!ulong;
+            value = MySQLValue(column.name, column.type, signed, &x, 8);
+            break;
+        case MYSQL_TYPE_DOUBLE:
+            auto x = svalue.to!double;
+            value = MySQLValue(column.name, column.type, signed, &x, 8);
+            break;
+        case MYSQL_TYPE_FLOAT:
+            auto x = svalue.to!float;
+            value = MySQLValue(column.name, column.type, signed, &x, 4);
+            break;
+        case MYSQL_TYPE_SET:
+        case MYSQL_TYPE_ENUM:
+        case MYSQL_TYPE_VARCHAR:
+        case MYSQL_TYPE_VAR_STRING:
+        case MYSQL_TYPE_STRING:
+        case MYSQL_TYPE_JSON:
+        case MYSQL_TYPE_NEWDECIMAL:
+        case MYSQL_TYPE_DECIMAL:
+            value = MySQLValue(column.name, column.type, signed, &svalue, typeof(svalue).sizeof);
+            break;
+        case MYSQL_TYPE_BIT:
+        case MYSQL_TYPE_TINY_BLOB:
+        case MYSQL_TYPE_MEDIUM_BLOB:
+        case MYSQL_TYPE_LONG_BLOB:
+        case MYSQL_TYPE_BLOB:
+        case MYSQL_TYPE_GEOMETRY:
+            value = MySQLValue(column.name, column.type, signed, &svalue, typeof(svalue).sizeof);
+            break;
+        case MYSQL_TYPE_TIME:
+        case MYSQL_TYPE_TIME2:
+            auto x = parseMySQLTime(svalue);
+            value = MySQLValue(column.name, column.type, signed, &x, typeof(x).sizeof);
+            break;
+        case MYSQL_TYPE_DATE:
+        case MYSQL_TYPE_NEWDATE:
+        case MYSQL_TYPE_DATETIME:
+        case MYSQL_TYPE_DATETIME2:
+        case MYSQL_TYPE_TIMESTAMP:
+        case MYSQL_TYPE_TIMESTAMP2:
+            auto x = parseMySQLDateTime(svalue);
+            value = x.valid() ? MySQLValue(column.name, column.type, signed, &x, typeof(x).sizeof) : MySQLValue(column.name, ColumnTypes.MYSQL_TYPE_NULL, signed, null, 0);
+            break;
     }
 }
 
@@ -1642,57 +1643,57 @@ void putValue(T)(ref OutputPacket packet, T value) if (is(Unqual!T == MySQLValue
 {
     final switch(value.type) with (ColumnTypes)
     {
-    case MYSQL_TYPE_NULL:
-        break;
-    case MYSQL_TYPE_TINY:
-        packet.put!ubyte(*cast(ubyte*)value.buffer_.ptr);
-        break;
-    case MYSQL_TYPE_YEAR:
-    case MYSQL_TYPE_SHORT:
-        packet.put!ushort(*cast(ushort*)value.buffer_.ptr);
-        break;
-    case MYSQL_TYPE_INT24:
-    case MYSQL_TYPE_LONG:
-        packet.put!uint(*cast(uint*)value.buffer_.ptr);
-        break;
-    case MYSQL_TYPE_LONGLONG:
-        packet.put!ulong(*cast(ulong*)value.buffer_.ptr);
-        break;
-    case MYSQL_TYPE_DOUBLE:
-        packet.put!double(*cast(double*)value.buffer_.ptr);
-        break;
-    case MYSQL_TYPE_FLOAT:
-        packet.put!float(*cast(float*)value.buffer_.ptr);
-        break;
-    case MYSQL_TYPE_SET:
-    case MYSQL_TYPE_ENUM:
-    case MYSQL_TYPE_VARCHAR:
-    case MYSQL_TYPE_VAR_STRING:
-    case MYSQL_TYPE_STRING:
-    case MYSQL_TYPE_JSON:
-    case MYSQL_TYPE_NEWDECIMAL:
-    case MYSQL_TYPE_DECIMAL:
-    case MYSQL_TYPE_BIT:
-    case MYSQL_TYPE_TINY_BLOB:
-    case MYSQL_TYPE_MEDIUM_BLOB:
-    case MYSQL_TYPE_LONG_BLOB:
-    case MYSQL_TYPE_BLOB:
-    case MYSQL_TYPE_GEOMETRY:
-        packet.putLenEnc((*cast(ubyte[]*)value.buffer_.ptr).length);
-        packet.put(*cast(ubyte[]*)value.buffer_.ptr);
-        break;
-    case MYSQL_TYPE_TIME:
-    case MYSQL_TYPE_TIME2:
-        packet.putMySQLTime(*cast(MySQLTime*)value.buffer_.ptr);
-        break;
-    case MYSQL_TYPE_DATE:
-    case MYSQL_TYPE_NEWDATE:
-    case MYSQL_TYPE_DATETIME:
-    case MYSQL_TYPE_DATETIME2:
-    case MYSQL_TYPE_TIMESTAMP:
-    case MYSQL_TYPE_TIMESTAMP2:
-        packet.putMySQLDateTime(*cast(MySQLDateTime*)value.buffer_.ptr);
-        break;
+        case MYSQL_TYPE_NULL:
+            break;
+        case MYSQL_TYPE_TINY:
+            packet.put!ubyte(*cast(ubyte*)value.buffer_.ptr);
+            break;
+        case MYSQL_TYPE_YEAR:
+        case MYSQL_TYPE_SHORT:
+            packet.put!ushort(*cast(ushort*)value.buffer_.ptr);
+            break;
+        case MYSQL_TYPE_INT24:
+        case MYSQL_TYPE_LONG:
+            packet.put!uint(*cast(uint*)value.buffer_.ptr);
+            break;
+        case MYSQL_TYPE_LONGLONG:
+            packet.put!ulong(*cast(ulong*)value.buffer_.ptr);
+            break;
+        case MYSQL_TYPE_DOUBLE:
+            packet.put!double(*cast(double*)value.buffer_.ptr);
+            break;
+        case MYSQL_TYPE_FLOAT:
+            packet.put!float(*cast(float*)value.buffer_.ptr);
+            break;
+        case MYSQL_TYPE_SET:
+        case MYSQL_TYPE_ENUM:
+        case MYSQL_TYPE_VARCHAR:
+        case MYSQL_TYPE_VAR_STRING:
+        case MYSQL_TYPE_STRING:
+        case MYSQL_TYPE_JSON:
+        case MYSQL_TYPE_NEWDECIMAL:
+        case MYSQL_TYPE_DECIMAL:
+        case MYSQL_TYPE_BIT:
+        case MYSQL_TYPE_TINY_BLOB:
+        case MYSQL_TYPE_MEDIUM_BLOB:
+        case MYSQL_TYPE_LONG_BLOB:
+        case MYSQL_TYPE_BLOB:
+        case MYSQL_TYPE_GEOMETRY:
+            packet.putLenEnc((*cast(ubyte[]*)value.buffer_.ptr).length);
+            packet.put(*cast(ubyte[]*)value.buffer_.ptr);
+            break;
+        case MYSQL_TYPE_TIME:
+        case MYSQL_TYPE_TIME2:
+            packet.putMySQLTime(*cast(MySQLTime*)value.buffer_.ptr);
+            break;
+        case MYSQL_TYPE_DATE:
+        case MYSQL_TYPE_NEWDATE:
+        case MYSQL_TYPE_DATETIME:
+        case MYSQL_TYPE_DATETIME2:
+        case MYSQL_TYPE_TIMESTAMP:
+        case MYSQL_TYPE_TIMESTAMP2:
+            packet.putMySQLDateTime(*cast(MySQLDateTime*)value.buffer_.ptr);
+            break;
     }
 }
 

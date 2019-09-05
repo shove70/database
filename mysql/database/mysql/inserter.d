@@ -84,48 +84,48 @@ struct Inserter
 
         final switch(action) with (OnDuplicate)
         {
-        case Ignore:
-            app.put("insert ignore into ");
-            break;
-        case Replace:
-            app.put("replace into ");
-            break;
-        case UpdateAll:
-            Appender!(char[]) dupapp;
+            case Ignore:
+                app.put("insert ignore into ");
+                break;
+            case Replace:
+                app.put("replace into ");
+                break;
+            case UpdateAll:
+                Appender!(char[]) dupapp;
 
-            foreach(size_t i, Arg; Args)
-            {
-                static if (isSomeString!(OriginalType!Arg))
+                foreach(size_t i, Arg; Args)
                 {
-                    dupapp.put('`');
-                    dupapp.put(fieldNames[i]);
-                    dupapp.put("`=values(`");
-                    dupapp.put(fieldNames[i]);
-                    dupapp.put("`)");
-                }
-                else
-                {
-                    auto columns = fieldNames[i];
-                    foreach (j, name; columns)
+                    static if (isSomeString!(OriginalType!Arg))
                     {
                         dupapp.put('`');
-                        dupapp.put(name);
+                        dupapp.put(fieldNames[i]);
                         dupapp.put("`=values(`");
-                        dupapp.put(name);
+                        dupapp.put(fieldNames[i]);
                         dupapp.put("`)");
-                        if (j + 1 != columns.length)
-                            dupapp.put(',');
                     }
+                    else
+                    {
+                        auto columns = fieldNames[i];
+                        foreach (j, name; columns)
+                        {
+                            dupapp.put('`');
+                            dupapp.put(name);
+                            dupapp.put("`=values(`");
+                            dupapp.put(name);
+                            dupapp.put("`)");
+                            if (j + 1 != columns.length)
+                                dupapp.put(',');
+                        }
+                    }
+                    if (i + 1 != Args.length)
+                        dupapp.put(',');
                 }
-                if (i + 1 != Args.length)
-                    dupapp.put(',');
-            }
-            dupUpdate_ = dupapp.data;
-            goto case Update;
-        case Update:
-        case Error:
-            app.put("insert into ");
-            break;
+                dupUpdate_ = dupapp.data;
+                goto case Update;
+            case Update:
+            case Error:
+                app.put("insert into ");
+                break;
         }
 
         app.put(tableName);

@@ -333,73 +333,73 @@ struct PgSQLValue
     {
         final switch(type_) with (PgColumnTypes)
         {
-        case UNKNOWN:
-        case NULL:
-            break;
-        case BOOL:
-            app.put(*cast(bool*)buffer_.ptr ? "TRUE" : "FALSE");
-            break;
-        case CHAR:
-            formattedWrite(&app, "%s", *cast(ubyte*)buffer_.ptr);
-            break;
-        case INT2:
-            formattedWrite(&app, "%d", *cast(short*)buffer_.ptr);
-            break;
-        case INT4:
-            formattedWrite(&app, "%d", *cast(int*)buffer_.ptr);
-            break;
-        case INT8:
-            formattedWrite(&app, "%d", *cast(long*)buffer_.ptr);
-            break;
-        case REAL:
-            formattedWrite(&app, "%g", *cast(float*)buffer_.ptr);
-            break;
-        case DOUBLE:
-            formattedWrite(&app, "%g", *cast(double*)buffer_.ptr);
-            break;
-        case POINT:
-        case LSEG:
-        case PATH:
-        case BOX:
-        case POLYGON:
-        case LINE:
-        case TINTERVAL:
-        case CIRCLE:
-        case JSONB:
-        case BYTEA:
-            formattedWrite(&app, "%s", *cast(ubyte[]*)buffer_.ptr);
-            break;
+            case UNKNOWN:
+            case NULL:
+                break;
+            case BOOL:
+                app.put(*cast(bool*)buffer_.ptr ? "TRUE" : "FALSE");
+                break;
+            case CHAR:
+                formattedWrite(&app, "%s", *cast(ubyte*)buffer_.ptr);
+                break;
+            case INT2:
+                formattedWrite(&app, "%d", *cast(short*)buffer_.ptr);
+                break;
+            case INT4:
+                formattedWrite(&app, "%d", *cast(int*)buffer_.ptr);
+                break;
+            case INT8:
+                formattedWrite(&app, "%d", *cast(long*)buffer_.ptr);
+                break;
+            case REAL:
+                formattedWrite(&app, "%g", *cast(float*)buffer_.ptr);
+                break;
+            case DOUBLE:
+                formattedWrite(&app, "%g", *cast(double*)buffer_.ptr);
+                break;
+            case POINT:
+            case LSEG:
+            case PATH:
+            case BOX:
+            case POLYGON:
+            case LINE:
+            case TINTERVAL:
+            case CIRCLE:
+            case JSONB:
+            case BYTEA:
+                formattedWrite(&app, "%s", *cast(ubyte[]*)buffer_.ptr);
+                break;
 
-        case MONEY:
-        case TEXT:
-        case NAME:
-        case BIT:
-        case VARBIT:
-        case NUMERIC:
-        case UUID:
-        case MACADDR:
-        case MACADDR8:
-        case INET:
-        case CIDR:
-        case JSON:
-        case XML:
-        case CHARA:
-        case VARCHAR:
-            formattedWrite(&app, "%s", *cast(const(char)[]*)buffer_.ptr);
-            break;
-        case DATE:
-            (*cast(PgSQLDate*)buffer_.ptr).toString(app);
-            break;
-        case TIMETZ:
-        case TIME:
-            (*cast(PgSQLTime*)buffer_.ptr).toString(app);
-            break;
-        case TIMESTAMP:
-        case TIMESTAMPTZ:
-            (*cast(PgSQLTimestamp*)buffer_.ptr).toString(app);
-            break;
-        case INTERVAL:
-            break;
+            case MONEY:
+            case TEXT:
+            case NAME:
+            case BIT:
+            case VARBIT:
+            case NUMERIC:
+            case UUID:
+            case MACADDR:
+            case MACADDR8:
+            case INET:
+            case CIDR:
+            case JSON:
+            case XML:
+            case CHARA:
+            case VARCHAR:
+                formattedWrite(&app, "%s", *cast(const(char)[]*)buffer_.ptr);
+                break;
+            case DATE:
+                (*cast(PgSQLDate*)buffer_.ptr).toString(app);
+                break;
+            case TIMETZ:
+            case TIME:
+                (*cast(PgSQLTime*)buffer_.ptr).toString(app);
+                break;
+            case TIMESTAMP:
+            case TIMESTAMPTZ:
+                (*cast(PgSQLTimestamp*)buffer_.ptr).toString(app);
+                break;
+            case INTERVAL:
+                break;
         }
     }
 
@@ -446,20 +446,20 @@ struct PgSQLValue
     {
         switch(type_) with (PgColumnTypes)
         {
-        case CHAR:
-            return cast(T)(*cast(char*)buffer_.ptr);
-        case INT2:
-            return cast(T)(*cast(short*)buffer_.ptr);
-        case INT4:
-            return cast(T)(*cast(int*)buffer_.ptr);
-        case INT8:
-            return cast(T)(*cast(long*)buffer_.ptr);
-        case REAL:
-            return cast(T)(*cast(float*)buffer_.ptr);
-        case DOUBLE:
-            return cast(T)(*cast(double*)buffer_.ptr);
-        default:
-            throw new PgSQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
+            case CHAR:
+                return cast(T)(*cast(char*)buffer_.ptr);
+            case INT2:
+                return cast(T)(*cast(short*)buffer_.ptr);
+            case INT4:
+                return cast(T)(*cast(int*)buffer_.ptr);
+            case INT8:
+                return cast(T)(*cast(long*)buffer_.ptr);
+            case REAL:
+                return cast(T)(*cast(float*)buffer_.ptr);
+            case DOUBLE:
+                return cast(T)(*cast(double*)buffer_.ptr);
+            default:
+                throw new PgSQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
         }
     }
 
@@ -467,36 +467,38 @@ struct PgSQLValue
     {
         switch (type_) with (PgColumnTypes)
         {
-        case TIMESTAMP:
-        case TIMESTAMPTZ:
-            return (*cast(PgSQLTimestamp*)buffer_.ptr).toSysTime;
-        default:
-            throw new PgSQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
+            case TIMESTAMP:
+            case TIMESTAMPTZ:
+                return (*cast(PgSQLTimestamp*)buffer_.ptr).toSysTime;
+            default:
+                throw new PgSQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
         }
     }
 
     T get(T)() const if (is(Unqual!T == DateTime))
     {
-        switch (type_) with (PgColumnTypes) {
-        case TIMESTAMP:
-        case TIMESTAMPTZ:
-            return (*cast(PgSQLTimestamp*)buffer_.ptr).toDateTime;
-        default:
-            throw new PgSQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
+        switch (type_) with (PgColumnTypes)
+        {
+            case TIMESTAMP:
+            case TIMESTAMPTZ:
+                return (*cast(PgSQLTimestamp*)buffer_.ptr).toDateTime;
+            default:
+                throw new PgSQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
         }
     }
 
     T get(T)() const if (is(Unqual!T == TimeOfDay))
     {
-        switch (type_) with (PgColumnTypes) {
-        case TIME:
-        case TIMETZ:
-            return (*cast(PgSQLTime*)buffer_.ptr).toTimeOfDay;
-        case TIMESTAMP:
-        case TIMESTAMPTZ:
-            return (*cast(PgSQLTimestamp*)buffer_.ptr).toTimeOfDay;
-        default:
-            throw new PgSQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
+        switch (type_) with (PgColumnTypes)
+        {
+            case TIME:
+            case TIMETZ:
+                return (*cast(PgSQLTime*)buffer_.ptr).toTimeOfDay;
+            case TIMESTAMP:
+            case TIMESTAMPTZ:
+                return (*cast(PgSQLTimestamp*)buffer_.ptr).toTimeOfDay;
+            default:
+                throw new PgSQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
         }
     }
 
@@ -504,13 +506,13 @@ struct PgSQLValue
     {
         switch (type_) with (PgColumnTypes)
         {
-        case DATE:
-            return (*cast(PgSQLDate*)buffer_.ptr).toDate;
-        case TIMESTAMP:
-        case TIMESTAMPTZ:
-            return (*cast(PgSQLTimestamp*)buffer_.ptr).toDate;
-        default:
-            throw new PgSQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
+            case DATE:
+                return (*cast(PgSQLDate*)buffer_.ptr).toDate;
+            case TIMESTAMP:
+            case TIMESTAMPTZ:
+                return (*cast(PgSQLTimestamp*)buffer_.ptr).toDate;
+            default:
+                throw new PgSQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(type_), T.stringof));
         }
     }
 
@@ -523,48 +525,48 @@ struct PgSQLValue
     {
         final switch(type_) with (PgColumnTypes)
         {
-        case NUMERIC:
-        case MONEY:
-        case BIT:
-        case VARBIT:
-        case INET:
-        case CIDR:
-        case MACADDR:
-        case MACADDR8:
-        case UUID:
-        case JSON:
-        case XML:
-        case TEXT:
-        case NAME:
-        case VARCHAR:
-        case CHARA:
-            return (*cast(T*)buffer_.ptr).dup;
-        case UNKNOWN:
-        case NULL:
-        case BOOL:
-        case CHAR:
-        case INT2:
-        case INT4:
-        case INT8:
-        case REAL:
-        case DOUBLE:
-        case POINT:
-        case LSEG:
-        case PATH:
-        case BOX:
-        case POLYGON:
-        case LINE:
-        case TINTERVAL:
-        case CIRCLE:
-        case BYTEA:
-        case DATE:
-        case TIME:
-        case TIMETZ:
-        case TIMESTAMP:
-        case TIMESTAMPTZ:
-        case INTERVAL:
-        case JSONB:
-            throw new PgSQLErrorException(format("Cannot convert '%s' from %s to array", name_, columnTypeName(type_)));
+            case NUMERIC:
+            case MONEY:
+            case BIT:
+            case VARBIT:
+            case INET:
+            case CIDR:
+            case MACADDR:
+            case MACADDR8:
+            case UUID:
+            case JSON:
+            case XML:
+            case TEXT:
+            case NAME:
+            case VARCHAR:
+            case CHARA:
+                return (*cast(T*)buffer_.ptr).dup;
+            case UNKNOWN:
+            case NULL:
+            case BOOL:
+            case CHAR:
+            case INT2:
+            case INT4:
+            case INT8:
+            case REAL:
+            case DOUBLE:
+            case POINT:
+            case LSEG:
+            case PATH:
+            case BOX:
+            case POLYGON:
+            case LINE:
+            case TINTERVAL:
+            case CIRCLE:
+            case BYTEA:
+            case DATE:
+            case TIME:
+            case TIMETZ:
+            case TIMESTAMP:
+            case TIMESTAMPTZ:
+            case INTERVAL:
+            case JSONB:
+                throw new PgSQLErrorException(format("Cannot convert '%s' from %s to array", name_, columnTypeName(type_)));
         }
     }
 
@@ -585,49 +587,50 @@ struct PgSQLValue
 
     T peek(T)() const if (isArray!T && !is(T == enum))
     {
-        final switch(type_) with (PgColumnTypes) {
-        case NUMERIC:
-        case MONEY:
-        case BIT:
-        case VARBIT:
-        case INET:
-        case CIDR:
-        case MACADDR:
-        case MACADDR8:
-        case UUID:
-        case JSON:
-        case XML:
-        case TEXT:
-        case NAME:
-        case VARCHAR:
-        case CHARA:
-            return *cast(T*)buffer_.ptr;
-        case UNKNOWN:
-        case NULL:
-        case BOOL:
-        case CHAR:
-        case INT2:
-        case INT4:
-        case INT8:
-        case REAL:
-        case DOUBLE:
-        case POINT:
-        case LSEG:
-        case PATH:
-        case BOX:
-        case POLYGON:
-        case LINE:
-        case TINTERVAL:
-        case CIRCLE:
-        case BYTEA:
-        case DATE:
-        case TIME:
-        case TIMETZ:
-        case TIMESTAMP:
-        case TIMESTAMPTZ:
-        case INTERVAL:
-        case JSONB:
-            throw new PgSQLErrorException(format("Cannot convert '%s' from %s to array", name_, columnTypeName(type_)));
+        final switch(type_) with (PgColumnTypes)
+        {
+            case NUMERIC:
+            case MONEY:
+            case BIT:
+            case VARBIT:
+            case INET:
+            case CIDR:
+            case MACADDR:
+            case MACADDR8:
+            case UUID:
+            case JSON:
+            case XML:
+            case TEXT:
+            case NAME:
+            case VARCHAR:
+            case CHARA:
+                return *cast(T*)buffer_.ptr;
+            case UNKNOWN:
+            case NULL:
+            case BOOL:
+            case CHAR:
+            case INT2:
+            case INT4:
+            case INT8:
+            case REAL:
+            case DOUBLE:
+            case POINT:
+            case LSEG:
+            case PATH:
+            case BOX:
+            case POLYGON:
+            case LINE:
+            case TINTERVAL:
+            case CIRCLE:
+            case BYTEA:
+            case DATE:
+            case TIME:
+            case TIMETZ:
+            case TIMESTAMP:
+            case TIMESTAMPTZ:
+            case INTERVAL:
+            case JSONB:
+                throw new PgSQLErrorException(format("Cannot convert '%s' from %s to array", name_, columnTypeName(type_)));
         }
     }
 
@@ -650,49 +653,49 @@ struct PgSQLValue
     {
         final switch(type_) with (PgColumnTypes)
         {
-        case UNKNOWN:
-        case NULL:
-        case BOOL:
-        case CHAR:
-        case INT2:
-        case INT4:
-        case INT8:
-        case REAL:
-        case DOUBLE:
-        case POINT:
-        case LSEG:
-        case PATH:
-        case BOX:
-        case POLYGON:
-        case LINE:
-        case TINTERVAL:
-        case CIRCLE:
-        case BYTEA:
-            break;
-        case NUMERIC:
-        case MONEY:
-        case BIT:
-        case VARBIT:
-        case INET:
-        case CIDR:
-        case MACADDR:
-        case MACADDR8:
-        case UUID:
-        case JSON:
-        case XML:
-        case TEXT:
-        case NAME:
-        case VARCHAR:
-        case CHARA:
-            return true;
-        case DATE:
-        case TIME:
-        case TIMETZ:
-        case TIMESTAMP:
-        case TIMESTAMPTZ:
-        case INTERVAL:
-        case JSONB:
-            return false;
+            case UNKNOWN:
+            case NULL:
+            case BOOL:
+            case CHAR:
+            case INT2:
+            case INT4:
+            case INT8:
+            case REAL:
+            case DOUBLE:
+            case POINT:
+            case LSEG:
+            case PATH:
+            case BOX:
+            case POLYGON:
+            case LINE:
+            case TINTERVAL:
+            case CIRCLE:
+            case BYTEA:
+                break;
+            case NUMERIC:
+            case MONEY:
+            case BIT:
+            case VARBIT:
+            case INET:
+            case CIDR:
+            case MACADDR:
+            case MACADDR8:
+            case UUID:
+            case JSON:
+            case XML:
+            case TEXT:
+            case NAME:
+            case VARCHAR:
+            case CHARA:
+                return true;
+            case DATE:
+            case TIME:
+            case TIMETZ:
+            case TIMESTAMP:
+            case TIMESTAMPTZ:
+            case INTERVAL:
+            case JSONB:
+                return false;
         }
         return false;
     }
@@ -701,50 +704,50 @@ struct PgSQLValue
     {
         final switch(type_) with (PgColumnTypes)
         {
-        case UNKNOWN:
-            return false;
-        case NULL:
-            return false;
-        case BOOL:
-        case CHAR:
-        case INT2:
-        case INT4:
-        case INT8:
-        case REAL:
-        case DOUBLE:
-            return true;
-        case POINT:
-        case LSEG:
-        case PATH:
-        case BOX:
-        case POLYGON:
-        case LINE:
-        case MONEY:
-        case TINTERVAL:
-        case CIRCLE:
-        case MACADDR:
-        case INET:
-        case CIDR:
-        case JSON:
-        case XML:
-        case TEXT:
-        case NAME:
-        case MACADDR8:
-        case BYTEA:
-        case CHARA:
-        case VARCHAR:
-        case DATE:
-        case TIME:
-        case TIMETZ:
-        case TIMESTAMP:
-        case TIMESTAMPTZ:
-        case INTERVAL:
-        case BIT:
-        case VARBIT:
-        case NUMERIC:
-        case UUID:
-        case JSONB:
-            return false;
+            case UNKNOWN:
+                return false;
+            case NULL:
+                return false;
+            case BOOL:
+            case CHAR:
+            case INT2:
+            case INT4:
+            case INT8:
+            case REAL:
+            case DOUBLE:
+                return true;
+            case POINT:
+            case LSEG:
+            case PATH:
+            case BOX:
+            case POLYGON:
+            case LINE:
+            case MONEY:
+            case TINTERVAL:
+            case CIRCLE:
+            case MACADDR:
+            case INET:
+            case CIDR:
+            case JSON:
+            case XML:
+            case TEXT:
+            case NAME:
+            case MACADDR8:
+            case BYTEA:
+            case CHARA:
+            case VARCHAR:
+            case DATE:
+            case TIME:
+            case TIMETZ:
+            case TIMESTAMP:
+            case TIMESTAMPTZ:
+            case INTERVAL:
+            case BIT:
+            case VARBIT:
+            case NUMERIC:
+            case UUID:
+            case JSONB:
+                return false;
         }
     }
 
@@ -950,14 +953,15 @@ auto parsePgSQLTime(ref const(char)[] x)
 
         const len = x.length;
         const frac = x.parse!uint;
-        switch (len - x.length) {
-        case 1: usecs = frac * 100_000; break;
-        case 2: usecs = frac * 10_000; break;
-        case 3: usecs = frac * 1_000; break;
-        case 4: usecs = frac * 100; break;
-        case 5: usecs = frac * 10; break;
-        case 6: break;
-        default: throw new PgSQLProtocolException("Bad datetime string format");
+        switch (len - x.length)
+        {
+            case 1: usecs = frac * 100_000; break;
+            case 2: usecs = frac * 10_000; break;
+            case 3: usecs = frac * 1_000; break;
+            case 4: usecs = frac * 100; break;
+            case 5: usecs = frac * 10; break;
+            case 6: break;
+            default: throw new PgSQLProtocolException("Bad datetime string format");
         }
     }
 
@@ -998,83 +1002,83 @@ void eatValueText(ref InputPacket packet, ref const PgSQLColumn column, ref PgSQ
 
         final switch(column.type) with (PgColumnTypes)
         {
-        case UNKNOWN:
-        case NULL:
-            value = PgSQLValue(column.name, column.type, null, 0);
-            break;
-        case BOOL:
-            auto x = *svalue.ptr == 't';
-            value = PgSQLValue(column.name, column.type, &x, 1);
-            break;
-        case CHAR:
-            value = PgSQLValue(column.name, column.type, cast(void*)svalue.ptr, 1);
-            break;
-        case INT2:
-            auto x = svalue.to!short;
-            value = PgSQLValue(column.name, column.type, &x, 2);
-            break;
-        case INT4:
-            auto x = svalue.to!int;
-            value = PgSQLValue(column.name, column.type, &x, 4);
-            break;
-        case INT8:
-            auto x = svalue.to!long;
-            value = PgSQLValue(column.name, column.type, &x, 8);
-            break;
-        case REAL:
-            auto x = svalue.to!float;
-            value = PgSQLValue(column.name, column.type, &x, 4);
-            break;
-        case DOUBLE:
-            auto x = svalue.to!double;
-            value = PgSQLValue(column.name, column.type, &x, 8);
-            break;
-        case POINT:
-        case LSEG:
-        case PATH:
-        case BOX:
-        case POLYGON:
-        case LINE:
-        case TINTERVAL:
-        case CIRCLE:
-            break;
+            case UNKNOWN:
+            case NULL:
+                value = PgSQLValue(column.name, column.type, null, 0);
+                break;
+            case BOOL:
+                auto x = *svalue.ptr == 't';
+                value = PgSQLValue(column.name, column.type, &x, 1);
+                break;
+            case CHAR:
+                value = PgSQLValue(column.name, column.type, cast(void*)svalue.ptr, 1);
+                break;
+            case INT2:
+                auto x = svalue.to!short;
+                value = PgSQLValue(column.name, column.type, &x, 2);
+                break;
+            case INT4:
+                auto x = svalue.to!int;
+                value = PgSQLValue(column.name, column.type, &x, 4);
+                break;
+            case INT8:
+                auto x = svalue.to!long;
+                value = PgSQLValue(column.name, column.type, &x, 8);
+                break;
+            case REAL:
+                auto x = svalue.to!float;
+                value = PgSQLValue(column.name, column.type, &x, 4);
+                break;
+            case DOUBLE:
+                auto x = svalue.to!double;
+                value = PgSQLValue(column.name, column.type, &x, 8);
+                break;
+            case POINT:
+            case LSEG:
+            case PATH:
+            case BOX:
+            case POLYGON:
+            case LINE:
+            case TINTERVAL:
+            case CIRCLE:
+                break;
 
-        case NUMERIC:
-        case MONEY:
-        case BIT:
-        case VARBIT:
-        case INET:
-        case CIDR:
-        case MACADDR:
-        case MACADDR8:
-        case UUID:
-        case JSON:
-        case XML:
-        case TEXT:
-        case NAME:
-        case BYTEA:
-        case VARCHAR:
-        case CHARA:
-            value = PgSQLValue(column.name, column.type, &svalue, typeof(svalue).sizeof);
-            break;
+            case NUMERIC:
+            case MONEY:
+            case BIT:
+            case VARBIT:
+            case INET:
+            case CIDR:
+            case MACADDR:
+            case MACADDR8:
+            case UUID:
+            case JSON:
+            case XML:
+            case TEXT:
+            case NAME:
+            case BYTEA:
+            case VARCHAR:
+            case CHARA:
+                value = PgSQLValue(column.name, column.type, &svalue, typeof(svalue).sizeof);
+                break;
 
-        case DATE:
-            auto x = parsePgSQLDate(svalue);
-            value = PgSQLValue(column.name, column.type, &x, x.sizeof);
-            break;
-        case TIME:
-        case TIMETZ:
-            auto x = parsePgSQLTime(svalue);
-            value = PgSQLValue(column.name, column.type, &x, x.sizeof);
-            break;
-        case TIMESTAMP:
-        case TIMESTAMPTZ:
-            auto x = parsePgSQLTimestamp(svalue);
-            value = PgSQLValue(column.name, column.type, &x, x.sizeof);
-            break;
-        case INTERVAL:
-        case JSONB:
-            break;
+            case DATE:
+                auto x = parsePgSQLDate(svalue);
+                value = PgSQLValue(column.name, column.type, &x, x.sizeof);
+                break;
+            case TIME:
+            case TIMETZ:
+                auto x = parsePgSQLTime(svalue);
+                value = PgSQLValue(column.name, column.type, &x, x.sizeof);
+                break;
+            case TIMESTAMP:
+            case TIMESTAMPTZ:
+                auto x = parsePgSQLTimestamp(svalue);
+                value = PgSQLValue(column.name, column.type, &x, x.sizeof);
+                break;
+            case INTERVAL:
+            case JSONB:
+                break;
         }
     }
     else

@@ -47,20 +47,20 @@ struct Socket
             {
                 continue;
             }
-
-            if (len == 0)
+            else if (len == 0)
             {
                 throw new MySQLConnectionException("Server closed the connection");
             }
-
-            if ((errno == EINTR) || (errno == EAGAIN) || (errno == EWOULDBLOCK))
+            else
             {
-                len = 0;
+                if ((errno == EINTR) || (errno == EAGAIN) || (errno == EWOULDBLOCK))
+                {
+                    len = 0;
+                    continue;
+                }
 
-                continue;
+                throw new MySQLConnectionException("Received std.socket.Socket.ERROR: " ~ formatSocketError(errno));
             }
-
-            throw new MySQLConnectionException("Received std.socket.Socket.ERROR: " ~ formatSocketError(errno));
         }
     }
 
@@ -76,20 +76,20 @@ struct Socket
             {
                 continue;
             }
-
-            if (len == 0)
+            else if (len == 0)
             {
                 throw new MySQLConnectionException("Server closed the connection");
             }
-
-            if ((errno == EINTR) || (errno == EAGAIN) || (errno == EWOULDBLOCK))
+            else
             {
-                len = 0;
+                if ((errno == EINTR) || (errno == EAGAIN) || (errno == EWOULDBLOCK))
+                {
+                    len = 0;
+                    continue;
+                }
 
-                continue;
+                throw new MySQLConnectionException("Sent std.socket.Socket.ERROR: " ~ formatSocketError(errno));
             }
-
-            throw new MySQLConnectionException("Sent std.socket.Socket.ERROR: " ~ formatSocketError(errno));
         }
     }
 

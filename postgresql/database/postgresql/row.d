@@ -376,16 +376,16 @@ string unCamelCase(string x)
     {
         switch (ch) with (CharClass)
         {
-        case 'A':..case 'Z':
-            return UpperCase;
-        case 'a':..case 'z':
-            return LowerCase;
-        case '0':..case '9':
-            return Digit;
-        case '_':
-            return Underscore;
-        default:
-            assert(false, "only supports identifier-type strings");
+            case 'A':..case 'Z':
+                return UpperCase;
+            case 'a':..case 'z':
+                return LowerCase;
+            case '0':..case '9':
+                return Digit;
+            case '_':
+                return Underscore;
+            default:
+                assert(false, "only supports identifier-type strings");
         }
     }
 
@@ -400,23 +400,24 @@ string unCamelCase(string x)
             auto ch = x.ptr[i];
             auto cls = classify(ch);
 
-            final switch (cls) {
-            case Underscore:
-                buffer[length++] = '_';
-                break;
-            case LowerCase:
-                buffer[length++] = ch;
-                break;
-            case UpperCase:
-                if ((pcls != UpperCase) && (pcls != Underscore))
+            final switch (cls)
+            {
+                case Underscore:
                     buffer[length++] = '_';
-                buffer[length++] = std.ascii.toLower(ch);
-                break;
-            case Digit:
-                if (pcls != Digit)
-                    buffer[length++] = '_';
-                buffer[length++] = ch;
-                break;
+                    break;
+                case LowerCase:
+                    buffer[length++] = ch;
+                    break;
+                case UpperCase:
+                    if ((pcls != UpperCase) && (pcls != Underscore))
+                        buffer[length++] = '_';
+                    buffer[length++] = std.ascii.toLower(ch);
+                    break;
+                case Digit:
+                    if (pcls != Digit)
+                        buffer[length++] = '_';
+                    buffer[length++] = ch;
+                    break;
             }
             pcls = cls;
 

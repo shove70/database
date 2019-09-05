@@ -2,11 +2,12 @@
 [![GitHub tag](https://img.shields.io/github/tag/shove70/database.svg?maxAge=86400)](https://github.com/shove70/database/releases)
 
 # database
-A lightweight native MySQL/MariaDB & PostgreSQL driver written in D
+A lightweight native MySQL/MariaDB & PostgreSQL driver written in D.
 
 The goal is a native driver that re-uses the same buffers and the stack as much as possible,
 avoiding unnecessary allocations and work for the garbage collector
 
+Native. No link, No harm :)
 
 ## example
 ```d

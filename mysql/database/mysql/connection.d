@@ -519,17 +519,8 @@ class Connection
 
 package:
 
-    bool busy_ = false;
-
-    @property bool busy()
-    {
-        return busy_;
-    }
-
-    @property void busy(bool value)
-    {
-        busy_ = value;
-    }
+    bool busy = false;
+    bool pooled = false;
 
 private:
 
@@ -627,11 +618,11 @@ private:
 
         switch (id)
         {
-        case StatusPackets.ERR_Packet:
-        case StatusPackets.OK_Packet:
-            return true;
-        default:
-            return false;
+            case StatusPackets.ERR_Packet:
+            case StatusPackets.OK_Packet:
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -641,12 +632,12 @@ private:
 
         switch (id)
         {
-        case StatusPackets.ERR_Packet:
-        case StatusPackets.OK_Packet:
-            eatStatus(packet, smallError);
-            break;
-        default:
-            break;
+            case StatusPackets.ERR_Packet:
+            case StatusPackets.OK_Packet:
+                eatStatus(packet, smallError);
+                break;
+            default:
+                break;
         }
     }
 
@@ -810,114 +801,115 @@ private:
 
         switch (id)
         {
-        case StatusPackets.OK_Packet:
-            status_.matched = 0;
-            status_.changed = 0;
-            status_.affected = packet.eatLenEnc();
-            status_.lastInsertId = packet.eatLenEnc();
-            status_.flags = packet.eat!ushort;
-            if (caps_ & CapabilityFlags.CLIENT_PROTOCOL_41)
-            {
-                status_.warnings = packet.eat!ushort;
-            }
-            status_.error = 0;
-            info([]);
-
-            if (caps_ & CapabilityFlags.CLIENT_SESSION_TRACK)
-            {
-                if (!packet.empty)
+            case StatusPackets.OK_Packet:
+                status_.matched = 0;
+                status_.changed = 0;
+                status_.affected = packet.eatLenEnc();
+                status_.lastInsertId = packet.eatLenEnc();
+                status_.flags = packet.eat!ushort;
+                if (caps_ & CapabilityFlags.CLIENT_PROTOCOL_41)
                 {
-                    info(packet.eat!(const(char)[])(cast(size_t)packet.eatLenEnc()));
+                    status_.warnings = packet.eat!ushort;
+                }
+                status_.error = 0;
+                info([]);
 
-                    if (status_.flags & StatusFlags.SERVER_SESSION_STATE_CHANGED)
+                if (caps_ & CapabilityFlags.CLIENT_SESSION_TRACK)
+                {
+                    if (!packet.empty)
                     {
-                        packet.skipLenEnc();
-                        while (!packet.empty())
+                        info(packet.eat!(const(char)[])(cast(size_t)packet.eatLenEnc()));
+
+                        if (status_.flags & StatusFlags.SERVER_SESSION_STATE_CHANGED)
                         {
-                            final switch (packet.eat!ubyte()) with (SessionStateType)
+                            packet.skipLenEnc();
+                            while (!packet.empty())
                             {
-                            case SESSION_TRACK_SCHEMA:
-                                packet.skipLenEnc();
-                                schema_.length = cast(size_t)packet.eatLenEnc();
-                                schema_[] = packet.eat!(const(char)[])(schema_.length);
-                                break;
-                            case SESSION_TRACK_SYSTEM_VARIABLES:
-                            case SESSION_TRACK_GTIDS:
-                            case SESSION_TRACK_STATE_CHANGE:
-                            case SESSION_TRACK_TRANSACTION_STATE:
-                            case SESSION_TRACK_TRANSACTION_CHARACTERISTICS:
-                                packet.skip(cast(size_t)packet.eatLenEnc());
-                                break;
+                                final switch (packet.eat!ubyte()) with (SessionStateType)
+                                {
+                                    case SESSION_TRACK_SCHEMA:
+                                        packet.skipLenEnc();
+                                        schema_.length = cast(size_t)packet.eatLenEnc();
+                                        schema_[] = packet.eat!(const(char)[])(schema_.length);
+                                        break;
+                                    case SESSION_TRACK_SYSTEM_VARIABLES:
+                                    case SESSION_TRACK_GTIDS:
+                                    case SESSION_TRACK_STATE_CHANGE:
+                                    case SESSION_TRACK_TRANSACTION_STATE:
+                                    case SESSION_TRACK_TRANSACTION_CHARACTERISTICS:
+                                        packet.skip(cast(size_t)packet.eatLenEnc());
+                                        break;
+                                }
                             }
                         }
                     }
                 }
-            }
-            else
-            {
-                info(packet.eat!(const(char)[])(packet.remaining));
-            }
-
-            import std.regex : matchFirst, regex;
-            static matcher = regex(`\smatched:\s*(\d+)\s+changed:\s*(\d+)`, `i`);
-            auto matches = matchFirst(info_, matcher);
-
-            if (!matches.empty)
-            {
-                status_.matched = matches[1].to!ulong;
-                status_.changed = matches[2].to!ulong;
-            }
-
-            break;
-        case StatusPackets.EOF_Packet:
-            status_.affected = 0;
-            status_.changed = 0;
-            status_.matched = 0;
-            status_.error = 0;
-            status_.warnings = packet.eat!ushort;
-            status_.flags = packet.eat!ushort;
-            info([]);
-
-            break;
-        case StatusPackets.ERR_Packet:
-            status_.affected = 0;
-            status_.changed = 0;
-            status_.matched = 0;
-            //status_.flags = 0;//[shove]
-            status_.flags &= StatusFlags.SERVER_STATUS_IN_TRANS;
-            status_.warnings = 0;
-            status_.error = packet.eat!ushort;
-            if (!smallError)
-            {
-                packet.skip(6);
-            }
-            info(packet.eat!(const(char)[])(packet.remaining));
-
-            switch(status_.error) {
-            case ErrorCodes.ER_DUP_ENTRY_WITH_KEY_NAME:
-            case ErrorCodes.ER_DUP_ENTRY:
-                throw new MySQLDuplicateEntryException(info_.idup);
-            case ErrorCodes.ER_DATA_TOO_LONG_FOR_COL:
-                throw new MySQLDataTooLongException(info_.idup);
-            case ErrorCodes.ER_DEADLOCK_FOUND:
-                throw new MySQLDeadlockFoundException(info_.idup);
-            case ErrorCodes.ER_TABLE_DOESNT_EXIST:
-                throw new MySQLTableDoesntExistException(info_.idup);
-            case ErrorCodes.ER_LOCK_WAIT_TIMEOUT:
-                throw new MySQLLockWaitTimeoutException(info_.idup);
-            default:
-                version(development)
-                {
-                    // On dev show the query together with the error message
-                    throw new MySQLErrorException(format("[err:%s] %s - %s", status_.error, info_, sql_.data));
-                }
                 else
                 {
-                    throw new MySQLErrorException(format("[err:%s] %s", status_.error, info_));
+                    info(packet.eat!(const(char)[])(packet.remaining));
                 }
-            }
-        default:
-            throw new MySQLProtocolException("Unexpected packet format");
+
+                import std.regex : matchFirst, regex;
+                static matcher = regex(`\smatched:\s*(\d+)\s+changed:\s*(\d+)`, `i`);
+                auto matches = matchFirst(info_, matcher);
+
+                if (!matches.empty)
+                {
+                    status_.matched = matches[1].to!ulong;
+                    status_.changed = matches[2].to!ulong;
+                }
+
+                break;
+            case StatusPackets.EOF_Packet:
+                status_.affected = 0;
+                status_.changed = 0;
+                status_.matched = 0;
+                status_.error = 0;
+                status_.warnings = packet.eat!ushort;
+                status_.flags = packet.eat!ushort;
+                info([]);
+
+                break;
+            case StatusPackets.ERR_Packet:
+                status_.affected = 0;
+                status_.changed = 0;
+                status_.matched = 0;
+                //status_.flags = 0;//[shove]
+                status_.flags &= StatusFlags.SERVER_STATUS_IN_TRANS;
+                status_.warnings = 0;
+                status_.error = packet.eat!ushort;
+                if (!smallError)
+                {
+                    packet.skip(6);
+                }
+                info(packet.eat!(const(char)[])(packet.remaining));
+
+                switch(status_.error)
+                {
+                    case ErrorCodes.ER_DUP_ENTRY_WITH_KEY_NAME:
+                    case ErrorCodes.ER_DUP_ENTRY:
+                        throw new MySQLDuplicateEntryException(info_.idup);
+                    case ErrorCodes.ER_DATA_TOO_LONG_FOR_COL:
+                        throw new MySQLDataTooLongException(info_.idup);
+                    case ErrorCodes.ER_DEADLOCK_FOUND:
+                        throw new MySQLDeadlockFoundException(info_.idup);
+                    case ErrorCodes.ER_TABLE_DOESNT_EXIST:
+                        throw new MySQLTableDoesntExistException(info_.idup);
+                    case ErrorCodes.ER_LOCK_WAIT_TIMEOUT:
+                        throw new MySQLLockWaitTimeoutException(info_.idup);
+                    default:
+                        version(development)
+                        {
+                            // On dev show the query together with the error message
+                            throw new MySQLErrorException(format("[err:%s] %s - %s", status_.error, info_, sql_.data));
+                        }
+                        else
+                        {
+                            throw new MySQLErrorException(format("[err:%s] %s", status_.error, info_));
+                        }
+                }
+            default:
+                throw new MySQLProtocolException("Unexpected packet format");
         }
     }
 
@@ -1243,57 +1235,57 @@ private:
                 ++argCount;
                 final switch(arg.type) with (ColumnTypes)
                 {
-                case MYSQL_TYPE_NULL:
-                    estimated += 4;
-                    break;
-                case MYSQL_TYPE_TINY:
-                    estimated += 4;
-                    break;
-                case MYSQL_TYPE_YEAR:
-                case MYSQL_TYPE_SHORT:
-                    estimated += 6;
-                    break;
-                case MYSQL_TYPE_INT24:
-                case MYSQL_TYPE_LONG:
-                    estimated += 6;
-                    break;
-                case MYSQL_TYPE_LONGLONG:
-                    estimated += 8;
-                    break;
-                case MYSQL_TYPE_FLOAT:
-                    estimated += 8;
-                    break;
-                case MYSQL_TYPE_DOUBLE:
-                    estimated += 8;
-                    break;
-                case MYSQL_TYPE_SET:
-                case MYSQL_TYPE_ENUM:
-                case MYSQL_TYPE_VARCHAR:
-                case MYSQL_TYPE_VAR_STRING:
-                case MYSQL_TYPE_STRING:
-                case MYSQL_TYPE_JSON:
-                case MYSQL_TYPE_NEWDECIMAL:
-                case MYSQL_TYPE_DECIMAL:
-                case MYSQL_TYPE_TINY_BLOB:
-                case MYSQL_TYPE_MEDIUM_BLOB:
-                case MYSQL_TYPE_LONG_BLOB:
-                case MYSQL_TYPE_BLOB:
-                case MYSQL_TYPE_BIT:
-                case MYSQL_TYPE_GEOMETRY:
-                    estimated += 2 + arg.peek!(const(char)[]).length;
-                    break;
-                case MYSQL_TYPE_TIME:
-                case MYSQL_TYPE_TIME2:
-                    estimated += 18;
-                    break;
-                case MYSQL_TYPE_DATE:
-                case MYSQL_TYPE_NEWDATE:
-                case MYSQL_TYPE_DATETIME:
-                case MYSQL_TYPE_DATETIME2:
-                case MYSQL_TYPE_TIMESTAMP:
-                case MYSQL_TYPE_TIMESTAMP2:
-                    estimated += 20;
-                    break;
+                    case MYSQL_TYPE_NULL:
+                        estimated += 4;
+                        break;
+                    case MYSQL_TYPE_TINY:
+                        estimated += 4;
+                        break;
+                    case MYSQL_TYPE_YEAR:
+                    case MYSQL_TYPE_SHORT:
+                        estimated += 6;
+                        break;
+                    case MYSQL_TYPE_INT24:
+                    case MYSQL_TYPE_LONG:
+                        estimated += 6;
+                        break;
+                    case MYSQL_TYPE_LONGLONG:
+                        estimated += 8;
+                        break;
+                    case MYSQL_TYPE_FLOAT:
+                        estimated += 8;
+                        break;
+                    case MYSQL_TYPE_DOUBLE:
+                        estimated += 8;
+                        break;
+                    case MYSQL_TYPE_SET:
+                    case MYSQL_TYPE_ENUM:
+                    case MYSQL_TYPE_VARCHAR:
+                    case MYSQL_TYPE_VAR_STRING:
+                    case MYSQL_TYPE_STRING:
+                    case MYSQL_TYPE_JSON:
+                    case MYSQL_TYPE_NEWDECIMAL:
+                    case MYSQL_TYPE_DECIMAL:
+                    case MYSQL_TYPE_TINY_BLOB:
+                    case MYSQL_TYPE_MEDIUM_BLOB:
+                    case MYSQL_TYPE_LONG_BLOB:
+                    case MYSQL_TYPE_BLOB:
+                    case MYSQL_TYPE_BIT:
+                    case MYSQL_TYPE_GEOMETRY:
+                        estimated += 2 + arg.peek!(const(char)[]).length;
+                        break;
+                    case MYSQL_TYPE_TIME:
+                    case MYSQL_TYPE_TIME2:
+                        estimated += 18;
+                        break;
+                    case MYSQL_TYPE_DATE:
+                    case MYSQL_TYPE_NEWDATE:
+                    case MYSQL_TYPE_DATETIME:
+                    case MYSQL_TYPE_DATETIME2:
+                    case MYSQL_TYPE_TIMESTAMP:
+                    case MYSQL_TYPE_TIMESTAMP2:
+                        estimated += 20;
+                        break;
                 }
             }
             else static if (isArray!(typeof(arg)) && !isSomeString!(typeof(arg)))
@@ -1405,35 +1397,35 @@ private auto copyUpToNext(ref Appender!(char[]) app, ref const(char)[] sql)
         auto ch = decode!(UseReplacementDchar.no)(sql, offset);
         switch (ch)
         {
-        case '?':
-            if (!quote)
-            {
-                app.put(sql[0..offset - 1]);
-                sql = sql[offset..$];
-                return true;
-            }
-            else
-            {
+            case '?':
+                if (!quote)
+                {
+                    app.put(sql[0..offset - 1]);
+                    sql = sql[offset..$];
+                    return true;
+                }
+                else
+                {
+                    goto default;
+                }
+            case '\'':
+            case '\"':
+            case '`':
+                if (quote == ch)
+                {
+                    quote = '\0';
+                }
+                else if (!quote)
+                {
+                    quote = ch;
+                }
                 goto default;
-            }
-        case '\'':
-        case '\"':
-        case '`':
-            if (quote == ch)
-            {
-                quote = '\0';
-            }
-            else if (!quote)
-            {
-                quote = ch;
-            }
-            goto default;
-        case '\\':
-            if (quote && (offset < sql.length))
-                decode!(UseReplacementDchar.no)(sql, offset);
-            goto default;
-        default:
-            break;
+            case '\\':
+                if (quote && (offset < sql.length))
+                    decode!(UseReplacementDchar.no)(sql, offset);
+                goto default;
+            default:
+                break;
         }
     }
     app.put(sql[0..offset]);

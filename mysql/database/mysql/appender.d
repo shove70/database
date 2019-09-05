@@ -118,87 +118,87 @@ void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T ==
 {
     final switch(value.type) with (ColumnTypes)
     {
-    case MYSQL_TYPE_NULL:
-        appender.put("null");
-        break;
-    case MYSQL_TYPE_TINY:
-        if (value.isSigned)
-        {
-            appendValue(appender, value.peek!byte);
-        }
-        else
-        {
-            appendValue(appender, value.peek!ubyte);
-        }
-        break;
-    case MYSQL_TYPE_YEAR:
-    case MYSQL_TYPE_SHORT:
-        if (value.isSigned)
-        {
-            appendValue(appender, value.peek!short);
-        }
-        else
-        {
-            appendValue(appender, value.peek!ushort);
-        }
-        break;
-    case MYSQL_TYPE_INT24:
-    case MYSQL_TYPE_LONG:
-        if (value.isSigned)
-        {
-            appendValue(appender, value.peek!int);
-        }
-        else
-        {
-            appendValue(appender, value.peek!uint);
-        }
-        break;
-    case MYSQL_TYPE_LONGLONG:
-        if (value.isSigned)
-        {
-            appendValue(appender, value.peek!long);
-        }
-        else
-        {
-            appendValue(appender, value.peek!ulong);
-        }
-        break;
-    case MYSQL_TYPE_DOUBLE:
-        appendValue(appender, value.peek!double);
-        break;
-    case MYSQL_TYPE_FLOAT:
-        appendValue(appender, value.peek!float);
-        break;
-    case MYSQL_TYPE_SET:
-    case MYSQL_TYPE_ENUM:
-    case MYSQL_TYPE_VARCHAR:
-    case MYSQL_TYPE_VAR_STRING:
-    case MYSQL_TYPE_STRING:
-    case MYSQL_TYPE_JSON:
-    case MYSQL_TYPE_NEWDECIMAL:
-    case MYSQL_TYPE_DECIMAL:
-        appendValue(appender, value.peek!(char[]));
-        break;
-    case MYSQL_TYPE_BIT:
-    case MYSQL_TYPE_TINY_BLOB:
-    case MYSQL_TYPE_MEDIUM_BLOB:
-    case MYSQL_TYPE_LONG_BLOB:
-    case MYSQL_TYPE_BLOB:
-    case MYSQL_TYPE_GEOMETRY:
-        appendValue(appender, value.peek!(ubyte[]));
-        break;
-    case MYSQL_TYPE_TIME:
-    case MYSQL_TYPE_TIME2:
-        appendValue(appender, value.peek!Duration);
-        break;
-    case MYSQL_TYPE_DATE:
-    case MYSQL_TYPE_NEWDATE:
-    case MYSQL_TYPE_DATETIME:
-    case MYSQL_TYPE_DATETIME2:
-    case MYSQL_TYPE_TIMESTAMP:
-    case MYSQL_TYPE_TIMESTAMP2:
-        appendValue(appender, value.peek!SysTime);
-        break;
+        case MYSQL_TYPE_NULL:
+            appender.put("null");
+            break;
+        case MYSQL_TYPE_TINY:
+            if (value.isSigned)
+            {
+                appendValue(appender, value.peek!byte);
+            }
+            else
+            {
+                appendValue(appender, value.peek!ubyte);
+            }
+            break;
+        case MYSQL_TYPE_YEAR:
+        case MYSQL_TYPE_SHORT:
+            if (value.isSigned)
+            {
+                appendValue(appender, value.peek!short);
+            }
+            else
+            {
+                appendValue(appender, value.peek!ushort);
+            }
+            break;
+        case MYSQL_TYPE_INT24:
+        case MYSQL_TYPE_LONG:
+            if (value.isSigned)
+            {
+                appendValue(appender, value.peek!int);
+            }
+            else
+            {
+                appendValue(appender, value.peek!uint);
+            }
+            break;
+        case MYSQL_TYPE_LONGLONG:
+            if (value.isSigned)
+            {
+                appendValue(appender, value.peek!long);
+            }
+            else
+            {
+                appendValue(appender, value.peek!ulong);
+            }
+            break;
+        case MYSQL_TYPE_DOUBLE:
+            appendValue(appender, value.peek!double);
+            break;
+        case MYSQL_TYPE_FLOAT:
+            appendValue(appender, value.peek!float);
+            break;
+        case MYSQL_TYPE_SET:
+        case MYSQL_TYPE_ENUM:
+        case MYSQL_TYPE_VARCHAR:
+        case MYSQL_TYPE_VAR_STRING:
+        case MYSQL_TYPE_STRING:
+        case MYSQL_TYPE_JSON:
+        case MYSQL_TYPE_NEWDECIMAL:
+        case MYSQL_TYPE_DECIMAL:
+            appendValue(appender, value.peek!(char[]));
+            break;
+        case MYSQL_TYPE_BIT:
+        case MYSQL_TYPE_TINY_BLOB:
+        case MYSQL_TYPE_MEDIUM_BLOB:
+        case MYSQL_TYPE_LONG_BLOB:
+        case MYSQL_TYPE_BLOB:
+        case MYSQL_TYPE_GEOMETRY:
+            appendValue(appender, value.peek!(ubyte[]));
+            break;
+        case MYSQL_TYPE_TIME:
+        case MYSQL_TYPE_TIME2:
+            appendValue(appender, value.peek!Duration);
+            break;
+        case MYSQL_TYPE_DATE:
+        case MYSQL_TYPE_NEWDATE:
+        case MYSQL_TYPE_DATETIME:
+        case MYSQL_TYPE_DATETIME2:
+        case MYSQL_TYPE_TIMESTAMP:
+        case MYSQL_TYPE_TIMESTAMP2:
+            appendValue(appender, value.peek!SysTime);
+            break;
     }
 }
 
@@ -211,12 +211,12 @@ void appendValue(Appender, T)(ref Appender appender, T value) if (isArray!T && (
     {
         switch(*ptr)
         {
-        case '\\':
-        case '\'':
-            appender.put('\\');
-            goto default;
-        default:
-            appender.put(*ptr++);
+            case '\\':
+            case '\'':
+                appender.put('\\');
+                goto default;
+            default:
+                appender.put(*ptr++);
         }
     }
     appender.put('\'');

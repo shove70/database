@@ -109,20 +109,20 @@ struct InputPacket
 
         switch(header)
         {
-        case 0xfb:
-            return 0;
-        case 0xfc:
-            return eat!ushort;
-        case 0xfd:
-            lo = eat!ubyte;
-            hi = eat!ushort;
-            return lo | (hi << 8);
-        case 0xfe:
-            lo = eat!uint;
-            hi = eat!uint;
-            return lo | (hi << 32);
-        default:
-            throw new MySQLProtocolException("Bad packet format");
+            case 0xfb:
+                return 0;
+            case 0xfc:
+                return eat!ushort;
+            case 0xfd:
+                lo = eat!ubyte;
+                hi = eat!ushort;
+                return lo | (hi << 8);
+            case 0xfe:
+                lo = eat!uint;
+                hi = eat!uint;
+                return lo | (hi << 32);
+            default:
+                throw new MySQLProtocolException("Bad packet format");
         }
     }
 
