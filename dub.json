@@ -4,7 +4,7 @@
         "Shove"
     ],
     "name": "database",
-    "license": "MIT License",
+    "license": "MIT",
     "copyright": "Copyright © 2015, Marcio Martins, Shove",
     "targetName": "database",
     "targetType": "library",

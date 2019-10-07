@@ -1,5 +1,6 @@
 [![Build Status](https://travis-ci.org/shove70/database.svg?branch=master)](https://travis-ci.org/shove70/database)
 [![GitHub tag](https://img.shields.io/github/tag/shove70/database.svg?maxAge=86400)](https://github.com/shove70/database/releases)
+[![Dub downloads](https://img.shields.io/dub/dt/database.svg)](http://code.dlang.org/packages/database)
 
 # database
 A lightweight native MySQL/MariaDB & PostgreSQL driver written in D.
