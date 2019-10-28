@@ -230,7 +230,7 @@ class Connection
 
         auto id = prepare(sql);
         execute(id, args);
-        //closePreparedStatement(id);
+        closePreparedStatement(id, sql);
     }
 
     void set(T)(const(char)[] variable, T value)
@@ -431,10 +431,20 @@ class Connection
         }
     }
 
-    void closePreparedStatement(PreparedStatement stmt)
+    void closePreparedStatement(PreparedStatement stmt, const(char)[] sql)
     {
+        if (allowClientPreparedCache_)
+        {
+            return;
+        }
+
         uint[1] data = [ stmt.id ];
         send(Commands.COM_STMT_CLOSE, data);
+
+        if (sql in clientPreparedCaches)
+        {
+            clientPreparedCaches.remove(sql);
+        }
     }
 
     @property ulong lastInsertId() const
@@ -1383,8 +1393,8 @@ private:
     bool trace_;
 
     // For mysql server not support prepared cache.
-    bool allowClientPreparedCache_ = true;
-    PreparedStatement[string] clientPreparedCaches;
+    bool allowClientPreparedCache_;
+    PreparedStatement[const(char)[]] clientPreparedCaches;
 }
 
 private auto copyUpToNext(ref Appender!(char[]) app, ref const(char)[] sql)
