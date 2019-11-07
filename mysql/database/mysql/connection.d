@@ -218,26 +218,18 @@ class Connection
         //scope(failure) close_();
 
         PreparedStatement stmt;
-        if (allowClientPreparedCache_ && (sql in clientPreparedCaches_))
+        if (sql in clientPreparedCaches_)
         {
             stmt = clientPreparedCaches_[sql];
         }
         else
         {
             stmt = prepare(sql);
-
-            if (allowClientPreparedCache_)
-            {
-                clientPreparedCaches_[sql] = stmt;
-            }
+            clientPreparedCaches_[sql] = stmt;
         }
 
         execute(stmt, args);
-
-        if (!allowClientPreparedCache_)
-        {
-            closePreparedStatement(stmt);
-        }
+        // closePreparedStatement(stmt);
     }
 
     void set(T)(const(char)[] variable, T value)
@@ -517,16 +509,6 @@ class Connection
         return trace_;
     }
 
-    @property void allowClientPreparedCache(bool enable)
-    {
-        allowClientPreparedCache_ = enable;
-    }
-
-    @property bool allowClientPreparedCache()
-    {
-        return allowClientPreparedCache_;
-    }
-
 package:
 
     @property bool busy()
@@ -537,6 +519,11 @@ package:
     @property void busy(bool value)
     {
         busy_ = value;
+
+        if (!value)
+        {
+            clearClientPreparedCache();
+        }
     }
 
     @property bool pooled()
@@ -1424,8 +1411,6 @@ private:
     // For tracing queries
     bool trace_;
 
-    // For mysql server not support prepared cache.
-    bool allowClientPreparedCache_ = true;
     PreparedStatement[const(char)[]] clientPreparedCaches_;
 
     bool busy_;
