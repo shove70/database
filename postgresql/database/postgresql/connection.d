@@ -314,8 +314,25 @@ class Connection
 
 package:
 
-    bool busy = false;
-    bool pooled = false;
+    @property bool busy()
+    {
+        return busy_;
+    }
+
+    @property void busy(bool value)
+    {
+        busy_ = value;
+    }
+
+    @property bool pooled()
+    {
+        return pooled_;
+    }
+
+    @property void pooled(bool value)
+    {
+        pooled_ = value;
+    }
 
 private:
 
@@ -1055,6 +1072,9 @@ private:
     ServerInfo server_;
 
     ConnectionNotice[] notices_;
+
+    bool busy_;
+    bool pooled_;
 }
 
 private auto copyUpToNext(ref Appender!(char[]) app, ref const(char)[] sql)

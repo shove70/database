@@ -173,11 +173,6 @@ class Connection
 
     auto prepare(const(char)[] sql)
     {
-        if (allowClientPreparedCache_ && (sql in clientPreparedCaches))
-        {
-            return clientPreparedCaches[sql];
-        }
-
         send(Commands.COM_STMT_PREPARE, sql);
 
         auto answer = retrieve();
@@ -210,13 +205,7 @@ class Connection
             eatEOF(retrieve());
         }
 
-        PreparedStatement stmt = PreparedStatement(id, params);
-        if (allowClientPreparedCache_)
-        {
-            clientPreparedCaches[sql] = stmt;
-        }
-
-        return stmt;
+        return PreparedStatement(id, params);
     }
 
     void executeNoPrepare(Args...)(const(char)[] sql, Args args)
@@ -228,9 +217,27 @@ class Connection
     {
         //scope(failure) close_();
 
-        auto id = prepare(sql);
-        execute(id, args);
-        closePreparedStatement(id, sql);
+        PreparedStatement stmt;
+        if (allowClientPreparedCache_ && (sql in clientPreparedCaches_))
+        {
+            stmt = clientPreparedCaches_[sql];
+        }
+        else
+        {
+            stmt = prepare(sql);
+
+            if (allowClientPreparedCache_)
+            {
+                clientPreparedCaches_[sql] = stmt;
+            }
+        }
+
+        execute(stmt, args);
+
+        if (!allowClientPreparedCache_)
+        {
+            closePreparedStatement(stmt);
+        }
     }
 
     void set(T)(const(char)[] variable, T value)
@@ -274,17 +281,19 @@ class Connection
 
     void rollback()
     {
-        if (connected)
+        if (!connected)
         {
-            if ((status_.flags & StatusFlags.SERVER_STATUS_IN_TRANS) == 0)
-            {
-                throw new MySQLErrorException("No active transaction");
-            }
-
-            query("rollback");
-
-            assert(!inTransaction);
+            return;
         }
+
+        if ((status_.flags & StatusFlags.SERVER_STATUS_IN_TRANS) == 0)
+        {
+            throw new MySQLErrorException("No active transaction");
+        }
+
+        query("rollback");
+
+        assert(!inTransaction);
     }
 
     @property bool inTransaction() const
@@ -431,20 +440,10 @@ class Connection
         }
     }
 
-    void closePreparedStatement(PreparedStatement stmt, const(char)[] sql)
+    void closePreparedStatement(PreparedStatement stmt)
     {
-        if (allowClientPreparedCache_)
-        {
-            return;
-        }
-
         uint[1] data = [ stmt.id ];
         send(Commands.COM_STMT_CLOSE, data);
-
-        if (sql in clientPreparedCaches)
-        {
-            clientPreparedCaches.remove(sql);
-        }
     }
 
     @property ulong lastInsertId() const
@@ -489,6 +488,7 @@ class Connection
 
     void close()
     {
+        clearClientPreparedCache();
         socket_.close();
     }
 
@@ -529,8 +529,25 @@ class Connection
 
 package:
 
-    bool busy = false;
-    bool pooled = false;
+    @property bool busy()
+    {
+        return busy_;
+    }
+
+    @property void busy(bool value)
+    {
+        busy_ = value;
+    }
+
+    @property bool pooled()
+    {
+        return pooled_;
+    }
+
+    @property void pooled(bool value)
+    {
+        pooled_ = value;
+    }
 
 private:
 
@@ -589,7 +606,7 @@ private:
 
         seq_ = 0;
         eatHandshake(retrieve());
-        clientPreparedCaches.clear();
+        clearClientPreparedCache();
     }
 
     void send(T)(Commands cmd, T[] data)
@@ -620,6 +637,21 @@ private:
         {
             connect();
         }
+    }
+
+    void clearClientPreparedCache()
+    {
+        if (clientPreparedCaches_.length == 0)
+        {
+            return;
+        }
+
+        foreach (p; clientPreparedCaches_)
+        {
+            closePreparedStatement(p);
+        }
+
+        clientPreparedCaches_.clear();
     }
 
     bool isStatus(InputPacket packet)
@@ -1393,8 +1425,11 @@ private:
     bool trace_;
 
     // For mysql server not support prepared cache.
-    bool allowClientPreparedCache_;
-    PreparedStatement[const(char)[]] clientPreparedCaches;
+    bool allowClientPreparedCache_ = true;
+    PreparedStatement[const(char)[]] clientPreparedCaches_;
+
+    bool busy_;
+    bool pooled_;
 }
 
 private auto copyUpToNext(ref Appender!(char[]) app, ref const(char)[] sql)
