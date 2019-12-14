@@ -8,7 +8,7 @@ import std.concurrency;
 import std.datetime;
 import std.algorithm.searching : any;
 import std.algorithm.mutation : remove;
-import std.exception : enforce;
+import std.exception : enforce, collectException;
 
 import database.postgresql.connection;
 
@@ -257,7 +257,6 @@ private:
 
             if (!testConnection(conn))
             {
-                conn = null;
                 continue;
             }
 
@@ -283,6 +282,9 @@ private:
         }
         catch (Exception e)
         {
+            collectException({ conn.close(); }());
+            conn = null;
+
             return false;
         }
     }
