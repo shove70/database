@@ -7,6 +7,7 @@ import std.string;
 import std.traits;
 import std.uni : sicmp;
 import std.utf : decode, UseReplacementDchar;
+import std.datetime;
 
 import database.mysql.exception;
 import database.mysql.packet;
@@ -534,6 +535,16 @@ package:
     @property void pooled(bool value)
     {
         pooled_ = value;
+    }
+
+    @property DateTime releaseTime()
+    {
+        return releaseTime_;
+    }
+
+    @property void releaseTime(DateTime value)
+    {
+        releaseTime_ = value;
     }
 
 private:
@@ -1415,6 +1426,7 @@ private:
 
     bool busy_;
     bool pooled_;
+    DateTime releaseTime_;
 }
 
 private auto copyUpToNext(ref Appender!(char[]) app, ref const(char)[] sql)

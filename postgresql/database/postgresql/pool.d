@@ -134,6 +134,7 @@ class Pool
         _options = options;
 
         createConnections(initialConnections);
+        _lastShrinkTime = cast(DateTime)Clock.currTime;
         __instantiated = true;
     }
 
@@ -167,6 +168,29 @@ class Pool
                 );
             }
             catch (OwnerTerminated e) { }
+
+            // Shrink the pool.
+            DateTime now = cast(DateTime)Clock.currTime;
+            if (((now - _lastShrinkTime) > 60.seconds) && (_pool.length > _initialConnections))
+            {
+                foreach (ref conn; cast(Connection[])_pool)
+                {
+                    if ((conn is null) || conn.busy || ((now - conn.releaseTime) <= 120.seconds))
+                    {
+                        continue;
+                    }
+
+                    collectException({ conn.close(); }());
+                    conn = null;
+                }
+
+                if (_pool.any!((a) => (a is null)))
+                {
+                    _pool = _pool.remove!((a) => (a is null));
+                }
+
+                _lastShrinkTime = now;
+            }
         }
     }
 
@@ -295,6 +319,7 @@ private:
         {
             Connection conn = cast(Connection)holder.conn;
             conn.busy = false;
+            conn.releaseTime = cast(DateTime)Clock.currTime;
         }
     }
 
@@ -310,6 +335,8 @@ private:
     uint _incrementalConnections;
     Duration _waitTime;
     ConnectionOptions _options;
+
+    DateTime _lastShrinkTime;
 }
 
 shared class RequestConnection
