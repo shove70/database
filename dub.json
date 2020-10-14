@@ -5,7 +5,7 @@
     ],
     "name": "database",
     "license": "MIT",
-    "copyright": "Copyright © 2015, Marcio Martins, Shove",
+    "copyright": "Copyright © 2017-2020, Marcio Martins, Shove",
     "targetName": "database",
     "targetType": "library",
     "dependencies": {
