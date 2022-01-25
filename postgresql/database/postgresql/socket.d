@@ -53,7 +53,7 @@ struct Socket
             }
             else
             {
-                if ((errno == EINTR) || (errno == EAGAIN) || (errno == EWOULDBLOCK))
+                if ((errno == EINTR) || (errno == EAGAIN)/* || (errno == EWOULDBLOCK)*/)
                 {
                     len = 0;
                     continue;
@@ -82,7 +82,7 @@ struct Socket
             }
             else
             {
-                if ((errno == EINTR) || (errno == EAGAIN) || (errno == EWOULDBLOCK))
+                if ((errno == EINTR) || (errno == EAGAIN)/* || (errno == EWOULDBLOCK)*/)
                 {
                     len = 0;
                     continue;
