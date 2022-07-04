@@ -13,9 +13,11 @@ import database.mysql.exception;
 import database.mysql.packet;
 import database.mysql.protocol;
 import database.mysql.type;
-import database.mysql.socket;
 import database.mysql.row;
 import database.mysql.appender;
+import database.util;
+
+alias Socket = DBSocket!MySQLConnectionException;
 
 immutable CapabilityFlags DefaultClientCaps = CapabilityFlags.CLIENT_LONG_PASSWORD | CapabilityFlags.CLIENT_LONG_FLAG |
 CapabilityFlags.CLIENT_CONNECT_WITH_DB | CapabilityFlags.CLIENT_PROTOCOL_41 | CapabilityFlags.CLIENT_SECURE_CONNECTION | CapabilityFlags.CLIENT_SESSION_TRACK;

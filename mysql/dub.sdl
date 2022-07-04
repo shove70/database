@@ -1,5 +1,0 @@
-name "mysql"
-description "Lightweight native MySQL/MariaDB driver"
-targetType "library"
-sourcePaths "."
-importPaths "."

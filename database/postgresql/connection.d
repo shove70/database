@@ -15,9 +15,11 @@ import database.postgresql.exception;
 import database.postgresql.packet;
 import database.postgresql.protocol;
 import database.postgresql.type;
-import database.postgresql.socket;
 import database.postgresql.row;
 import database.postgresql.appender;
+import database.util;
+
+alias Socket = DBSocket!PgSQLConnectionException;
 
 struct ConnectionStatus
 {
