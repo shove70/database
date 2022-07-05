@@ -4,46 +4,16 @@ import std.algorithm;
 import std.array : appender;
 import std.conv : parse, to;
 import std.datetime;
-import std.datetime.timezone;
 import std.format: format, formattedWrite;
 import std.traits;
 import std.typecons;
-
 import database.postgresql.protocol;
 import database.postgresql.packet;
 import database.postgresql.exception;
 import database.postgresql.row;
+public import database.util;
 
-struct IgnoreAttribute {}
-struct OptionalAttribute {}
-struct NameAttribute { const(char)[] name; }
-struct UnCamelCaseAttribute {}
-struct TableNameAttribute {const(char)[] name;}
-
-@property TableNameAttribute tableName(const(char)[] name)
-{
-    return TableNameAttribute(name);
-}
-
-@property IgnoreAttribute ignore()
-{
-    return IgnoreAttribute();
-}
-
-@property OptionalAttribute optional()
-{
-    return OptionalAttribute();
-}
-
-@property NameAttribute as(const(char)[] name)
-{
-    return NameAttribute(name);
-}
-
-@property UnCamelCaseAttribute uncamel()
-{
-    return UnCamelCaseAttribute();
-}
+alias SQLName = KeyName;
 
 template isValueType(T)
 {
@@ -75,7 +45,7 @@ template isWritableDataMember(T, string Member)
     {
         enum isWritableDataMember = true;
     }
-    else static if (hasUDA!(__traits(getMember, T, Member), IgnoreAttribute))
+    else static if (hasUDA!(__traits(getMember, T, Member), ignore))
     {
         enum isWritableDataMember = false;
     }
@@ -123,7 +93,7 @@ template isReadableDataMember(T, string Member)
     {
         enum isReadableDataMember = true;
     }
-    else static if (hasUDA!(__traits(getMember, T, Member), IgnoreAttribute))
+    else static if (hasUDA!(__traits(getMember, T, Member), ignore))
     {
         enum isReadableDataMember = false;
     }

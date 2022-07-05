@@ -142,40 +142,6 @@ private struct ServerInfo
     uint cancellationKey;
 }
 
-@property string placeholders(size_t x, bool parens = true)
-{
-    if (x)
-    {
-        auto app = appender!string;
-        if (parens)
-        {
-            app.reserve(x + x - 1);
-
-            app.put('(');
-            foreach (i; 0..x - 1)
-                app.put("?,");
-            app.put('?');
-            app.put(')');
-        }
-        else
-        {
-            app.reserve(x + x + 1);
-
-            foreach (i; 0..x - 1)
-                app.put("?,");
-            app.put('?');
-        }
-        return app.data;
-    }
-
-    return null;
-}
-
-@property string placeholders(T)(T x, bool parens = true) if (is(typeof(() { auto y = x.length; })))
-{
-    return x.length.placeholders(parens);
-}
-
 enum ConnectionOptions
 {
     Default        = 0
@@ -412,7 +378,7 @@ private:
             startup.putz(settings_.db);
         }
         startup.put!ubyte(0);
-        startup.finalize(0);
+        startup.finalize();
 
         socket_.write(startup.get());
 
@@ -542,7 +508,7 @@ private:
                         throw new PgSQLProtocolException(format("Unsupported authentication method: %s", auth));
                 }
 
-                reply.finalize(0);
+                reply.finalize();
                 socket_.write(reply.get());
                 break;
             case NoticeResponse:
@@ -602,7 +568,6 @@ private:
         while (field)
         {
             auto value = packet.eatz();
-            import database.postgresql.row : hashOf;
 
             switch (field) with (NoticeMessageField)
             {
@@ -685,7 +650,6 @@ private:
     void eatCommandComplete(InputPacket packet)
     {
         assert(packet.type == InputMessageType.CommandComplete);
-        import database.postgresql.row : hashOf;
 
         auto tag = packet.eatz().splitter(' ');
         auto command = tag.front();

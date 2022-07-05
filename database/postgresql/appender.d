@@ -4,37 +4,9 @@ import std.conv;
 import std.datetime;
 import std.format;
 import std.traits;
-import std.typecons;
-
 import database.postgresql.protocol;
 import database.postgresql.type;
-
-void appendValues(Appender, T)(ref Appender appender, T values) if (isArray!T && !isSomeString!(OriginalType!T))
-{
-    foreach (size_t i, value; values)
-    {
-        appendValue(appender, value);
-        if (i != values.length-1)
-            appender.put(',');
-    }
-}
-
-void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T == typeof(null)))
-{
-    appender.put("null");
-}
-
-void appendValue(Appender, T)(ref Appender appender, T value) if (isInstanceOf!(Nullable, T) || isInstanceOf!(NullableRef, T))
-{
-    if (value.isNull)
-    {
-        appendValue(appender, null);
-    }
-    else
-    {
-        appendValue(appender, value.get);
-    }
-}
+public import database.util : appendValue, appendValues;
 
 void appendValue(Appender, T)(ref Appender appender, T value) if (isScalarType!T)
 {

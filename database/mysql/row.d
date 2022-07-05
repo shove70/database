@@ -1,438 +1,156 @@
 module database.mysql.row;
 
-import std.algorithm;
-import std.datetime;
 import std.traits;
 import std.typecons;
-import std.format : format;
-import std.ascii;
-
 import database.mysql.exception;
 import database.mysql.type;
-
-enum Strict
-{
-    yes = 0,
-    yesIgnoreNull,
-    no,
-}
+public import database.row;
+import database.util;
 
 private uint hashOf(const(char)[] x)
 {
-    uint hash = 2166136261u;
-    foreach(i; 0..x.length)
-        hash = (hash ^ cast(uint)(std.ascii.toLower(x.ptr[i]))) * 16777619u;
+	import std.ascii;
 
-    return hash;
+	uint hash = 2166136261u;
+	foreach(i; 0..x.length)
+		hash = (hash ^ cast(uint)(toLower(x.ptr[i]))) * 16777619u;
+
+	return hash;
 }
 
-private bool equalsCI(const(char)[]x, const(char)[] y)
+alias MySQLRow = Row!(MySQLValue, MySQLHeader, MySQLErrorException, hashOf, Mixin);
+
+private template Mixin()
 {
-    if (x.length != y.length)
-        return false;
+	private static bool equalsCI(const(char)[]x, const(char)[] y)
+	{
+		import std.ascii;
 
-    foreach(i; 0..x.length)
-    {
-        if (std.ascii.toLower(x.ptr[i]) != std.ascii.toLower(y.ptr[i]))
-            return false;
-    }
+		if (x.length != y.length)
+			return false;
 
-    return true;
-}
+		foreach(i; 0..x.length)
+			if (toLower(x.ptr[i]) != toLower(y.ptr[i]))
+				return false;
 
-struct MySQLRow
-{
-    @property size_t opDollar() const
-    {
-        return values_.length;
-    }
+		return true;
+	}
 
-    @property const(const(char)[])[] columns() const
-    {
-        return names_;
-    }
+	package uint find_(uint hash, const(char)[] key) const
+	{
+		if (auto mask = index_.length - 1) {
+			assert((index_.length & mask) == 0);
 
-    @property ref auto opDispatch(string key)() const
-    {
-        enum hash = hashOf(key);
-        return dispatchFast_(hash, key);
-    }
+			hash = hash & mask;
+			uint probe = 1;
 
-    auto opSlice() const
-    {
-        return values_;
-    }
+			while (true)
+			{
+				auto index = index_[hash];
+				if (index)
+				{
+					if (equalsCI(names_[index - 1], key))
+						return index;
+					hash = (hash + probe++) & mask;
+				}
+				else
+				{
+					break;
+				}
+			}
+		}
 
-    auto opSlice(size_t i, size_t j) const
-    {
-        return values_[i..j];
-    }
+		return 0;
+	}
 
-    ref auto opIndex(string key) const
-    {
-        if (auto index = find_(key.hashOf, key))
-            return values_[index - 1];
-        throw new MySQLErrorException("Column '" ~ key ~ "' was not found in this result set");
-    }
+	private void structurize(Strict strict = Strict.yesIgnoreNull, string path = null, T)(ref T result)
+	{
+		import database.mysql.exception;
+		import database.mysql.type;
+		import database.util;
+		import std.format : format;
 
-    ref auto opIndex(size_t index) const
-    {
-        return values_[index];
-    }
+		enum unCamel = hasUDA!(T, snakeCase);
+		foreach(member; __traits(allMembers, T))
+		{
+			static if (isWritableDataMember!(T, member))
+			{
+				static if (!hasUDA!(__traits(getMember, result, member), as))
+				{
+					enum pathMember = path ~ member;
+					static if (unCamel)
+					{
+						enum pathMemberAlt = path ~ member.snakeCase;
+					}
+				}
+				else
+				{
+					enum pathMember = path ~ getUDAs!(__traits(getMember, result, member), as)[0].name;
+					static if (unCamel)
+					{
+						enum pathMemberAlt = pathMember;
+					}
+				}
 
-    const(MySQLValue)* opBinaryRight(string op)(string key) const if (op == "in")
-    {
-        if (auto index = find(key.hashOf, key))
-            return &values_[index - 1];
-        return null;
-    }
+				alias MemberType = typeof(__traits(getMember, result, member));
 
-    int opApply(int delegate(const ref MySQLValue value) del) const
-    {
-        foreach (ref v; values_)
-            if (auto ret = del(v))
-                return ret;
-        return 0;
-    }
+				static if (isPointer!MemberType && !isValueType!(PointerTarget!MemberType) || !isValueType!MemberType)
+				{
+					enum pathNew = pathMember ~ '.';
+					enum st = Select!(hasUDA!(__traits(getMember, result, member), optional), Strict.no, strict);
+					static if (isPointer!MemberType)
+					{
+						if (__traits(getMember, result, member))
+							structurize!(st, pathNew)(*__traits(getMember, result, member));
+					}
+					else
+					{
+						structurize!(st, pathNew)(__traits(getMember, result, member));
+					}
+				}
+				else
+				{
+					enum hash = pathMember.hashOf;
+					static if (unCamel)
+					{
+						enum hashAlt = pathMemberAlt.hashOf;
+					}
 
-    int opApply(int delegate(ref size_t, const ref MySQLValue) del) const
-    {
-        foreach (ref size_t i, ref v; values_)
-            if (auto ret = del(i, v))
-                return ret;
-        return 0;
-    }
+					auto index = find_(hash, pathMember);
+					static if (unCamel && (pathMember != pathMemberAlt))
+					{
+						if (!index)
+							index = find_(hashAlt, pathMemberAlt);
+					}
 
-    int opApply(int delegate(const ref const(char)[], const ref MySQLValue) del) const
-    {
-        foreach (size_t i, ref v; values_)
-            if (auto ret = del(names_[i], v))
-                return ret;
-        return 0;
-    }
+					if (index)
+					{
+						auto pvalue = values_[index - 1];
 
-    void toString(Appender)(ref Appender app) const
-    {
-        import std.format : formattedWrite;
-        formattedWrite(&app, "%s", values_);
-    }
+						static if (strict == Strict.no || strict == Strict.yesIgnoreNull || hasUDA!(__traits(getMember, result, member), optional))
+						{
+							if (pvalue.isNull)
+								continue;
+						}
 
-    string toString() const
-    {
-        import std.conv : to;
-        return to!string(values_);
-    }
+						__traits(getMember, result, member) = pvalue.get!(Unqual!MemberType);
+						continue;
+					}
 
-    string[] toStringArray(size_t start = 0, size_t end = ~cast(size_t)0) const
-    {
-        end = min(end, values_.length);
-        start = min(start, values_.length);
-        if (start > end)
-            swap(start, end);
-
-        string[] result;
-        result.reserve(end - start);
-        foreach(i; start..end)
-            result ~= values_[i].toString;
-        return result;
-    }
-
-    string[string] toAA()
-    {
-        string[string] result;
-        foreach(i, name; names_)
-        {
-            result[name] = values_[i].toString();
-        }
-
-        return result;
-    }
-
-    void toStruct(T, Strict strict = Strict.yesIgnoreNull)(ref T x) if(is(Unqual!T == struct) && !is(T == Strict))
-    {
-        static if (isTuple!(Unqual!T))
-        {
-            foreach(i, ref f; x.field)
-            {
-                if (i < values_.length)
-                {
-                    static if (strict != Strict.yes)
-                    {
-                        if (!this[i].isNull)
-                            f = this[i].get!(Unqual!(typeof(f)));
-                    }
-                    else
-                    {
-                        f = this[i].get!(Unqual!(typeof(f)));
-                    }
-                }
-                else static if ((strict == Strict.yes) || (strict == Strict.yesIgnoreNull))
-                {
-                    throw new MySQLErrorException("Column " ~ i ~ " is out of range for this result set");
-                }
-            }
-        }
-        else
-        {
-            structurize!(strict, null)(x);
-        }
-    }
-
-    void toStruct(Strict strict, T)(ref T x) if (is(Unqual!T == struct)) {
-        toStruct!(T, strict)(x);
-    }
-
-    T toStruct(T, Strict strict = Strict.yesIgnoreNull)() if (is(Unqual!T == struct))
-    {
-        T result;
-        toStruct!(T, strict)(result);
-
-        return result;
-    }
-
-package:
-
-    ref auto dispatchFast_(uint hash, string key) const
-    {
-        if (auto index = find_(hash, key))
-            return opIndex(index - 1);
-        throw new MySQLErrorException("Column '" ~ key ~ "' was not found in this result set");
-    }
-
-    void header_(MySQLHeader header)
-    {
-        auto headerLen = header.length;
-        auto idealLen = (headerLen + (headerLen >> 2));
-        auto indexLen = index_.length;
-
-        index_[] = 0;
-
-        if (indexLen < idealLen)
-        {
-            indexLen = max(32, indexLen);
-
-            while (indexLen < idealLen)
-                indexLen <<= 1;
-
-            index_.length = indexLen;
-        }
-
-        auto mask = (indexLen - 1);
-        assert((indexLen & mask) == 0);
-
-        names_.length = headerLen;
-        values_.length = headerLen;
-        foreach (index, ref column; header)
-        {
-            names_[index] = column.name;
-
-            auto hash = hashOf(column.name) & mask;
-            auto probe = 1;
-
-            while (true)
-            {
-                if (index_[hash] == 0)
-                {
-                    index_[hash] = cast(uint)index + 1;
-                    break;
-                }
-
-                hash = (hash + probe++) & mask;
-            }
-        }
-    }
-
-    uint find_(uint hash, const(char)[] key) const
-    {
-        if (auto mask = index_.length - 1) {
-            assert((index_.length & mask) == 0);
-
-            hash = hash & mask;
-            auto probe = 1;
-
-            while (true)
-            {
-                auto index = index_[hash];
-                if (index)
-                {
-                    if (names_[index - 1].equalsCI(key))
-                        return index;
-                    hash = (hash + probe++) & mask;
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
-
-        return 0;
-    }
-
-    ref auto get_(size_t index)
-    {
-        return values_[index];
-    }
-
-private:
-
-    void structurize(Strict strict = Strict.yesIgnoreNull, string path = null, T)(ref T result)
-    {
-        enum unCamel = hasUDA!(T, UnCamelCaseAttribute);
-
-        foreach(member; __traits(allMembers, T))
-        {
-            static if (isWritableDataMember!(T, member))
-            {
-                static if (!hasUDA!(__traits(getMember, result, member), NameAttribute))
-                {
-                    enum pathMember = path ~ member;
-                    static if (unCamel)
-                    {
-                        enum pathMemberAlt = path ~ member.unCamelCase;
-                    }
-                }
-                else
-                {
-                    enum pathMember = path ~ getUDAs!(__traits(getMember, result, member), NameAttribute)[0].name;
-                    static if (unCamel)
-                    {
-                        enum pathMemberAlt = pathMember;
-                    }
-                }
-
-                alias MemberType = typeof(__traits(getMember, result, member));
-
-                static if (isPointer!MemberType && !isValueType!(PointerTarget!MemberType) || !isValueType!MemberType)
-                {
-                    enum pathNew = pathMember ~ ".";
-                    enum st = Select!(hasUDA!(__traits(getMember, result, member), OptionalAttribute), Strict.no, strict);
-                    static if (isPointer!MemberType)
-                    {
-                        if (__traits(getMember, result, member))
-                            structurize!(st, pathNew)(*__traits(getMember, result, member));
-                    }
-                    else
-                    {
-                        structurize!(st, pathNew)(__traits(getMember, result, member));
-                    }
-                }
-                else
-                {
-                    enum hash = pathMember.hashOf;
-                    static if (unCamel)
-                    {
-                        enum hashAlt = pathMemberAlt.hashOf;
-                    }
-
-                    auto index = find_(hash, pathMember);
-                    static if (unCamel && (pathMember != pathMemberAlt))
-                    {
-                        if (!index)
-                            index = find_(hashAlt, pathMemberAlt);
-                    }
-
-                    if (index)
-                    {
-                        auto pvalue = values_[index - 1];
-
-                        static if ((strict == Strict.no) || (strict == Strict.yesIgnoreNull) || hasUDA!(__traits(getMember, result, member), OptionalAttribute))
-                        {
-                            if (pvalue.isNull)
-                                continue;
-                        }
-
-                        __traits(getMember, result, member) = pvalue.get!(Unqual!MemberType);
-                        continue;
-                    }
-
-                    static if (((strict == Strict.yes) || (strict == Strict.yesIgnoreNull)) && !hasUDA!(__traits(getMember, result, member), OptionalAttribute))
-                    {
-                        static if (!unCamel || (pathMember == pathMemberAlt))
-                        {
-                            enum ColumnError = format("Column '%s' was not found in this result set", pathMember);
-                        }
-                        else
-                        {
-                            enum ColumnError = format("Column '%s' or '%s' was not found in this result set", pathMember, pathMemberAlt);
-                        }
-                        throw new MySQLErrorException(ColumnError);
-                    }
-                }
-            }
-        }
-    }
-
-    MySQLValue[] values_;
-    const(char)[][] names_;
-    uint[] index_;
-}
-
-string unCamelCase(string x)
-{
-    assert(x.length <= 64);
-
-    enum CharClass
-    {
-        LowerCase,
-        UpperCase,
-        Underscore,
-        Digit,
-    }
-
-    CharClass classify(char ch) @nogc @safe pure nothrow
-    {
-        switch (ch) with (CharClass)
-        {
-            case 'A':..case 'Z':
-                return UpperCase;
-            case 'a':..case 'z':
-                return LowerCase;
-            case '0':..case '9':
-                return Digit;
-            case '_':
-                return Underscore;
-            default:
-                assert(false, "only supports identifier-type strings");
-        }
-    }
-
-    if (x.length > 0)
-    {
-        char[128] buffer;
-        size_t length;
-
-        auto pcls = classify(x.ptr[0]);
-        foreach (i; 0..x.length) with (CharClass)
-        {
-            auto ch = x.ptr[i];
-            auto cls = classify(ch);
-
-            final switch (cls)
-            {
-                case Underscore:
-                    buffer[length++] = '_';
-                    break;
-                case LowerCase:
-                    buffer[length++] = ch;
-                    break;
-                case UpperCase:
-                    if ((pcls != UpperCase) && (pcls != Underscore))
-                        buffer[length++] = '_';
-                    buffer[length++] = std.ascii.toLower(ch);
-                    break;
-                case Digit:
-                    if (pcls != Digit)
-                        buffer[length++] = '_';
-                    buffer[length++] = ch;
-                    break;
-            }
-            pcls = cls;
-
-            if (length == buffer.length)
-                break;
-        }
-        return buffer[0..length].idup;
-    }
-    return x;
+					static if ((strict == Strict.yes || strict == Strict.yesIgnoreNull) && !hasUDA!(__traits(getMember, result, member), optional))
+					{
+						static if (!unCamel || (pathMember == pathMemberAlt))
+						{
+							enum ColumnError = "Column '%s' was not found in this result set".format(pathMember);
+						}
+						else
+						{
+							enum ColumnError = "Column '%s' or '%s' was not found in this result set".format(pathMember, pathMemberAlt);
+						}
+						throw new MySQLErrorException(ColumnError);
+					}
+				}
+			}
+		}
+	}
 }

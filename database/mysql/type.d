@@ -8,49 +8,16 @@ import std.format: format, formattedWrite;
 import std.traits;
 import std.typecons;
 import std.variant;
-
 import database.mysql.protocol;
 import database.mysql.packet;
 import database.mysql.exception;
 import database.mysql.row;
+public import database.util;
 
-struct IgnoreAttribute {}
-struct OptionalAttribute {}
-struct NameAttribute { const(char)[] name; }
-struct UnCamelCaseAttribute {}
-struct TableNameAttribute { const(char)[] name; }
+alias SQLName = KeyName;
 
-@property TableNameAttribute tableName(const(char)[] name)
-{
-    return TableNameAttribute(name);
-}
-
-@property IgnoreAttribute ignore()
-{
-    return IgnoreAttribute();
-}
-
-@property OptionalAttribute optional()
-{
-    return OptionalAttribute();
-}
-
-@property NameAttribute as(const(char)[] name)
-{
-    return NameAttribute(name);
-}
-
-@property UnCamelCaseAttribute uncamel()
-{
-    return UnCamelCaseAttribute();
-}
-
-template Unnull(U)
-{
-    alias impl(N : Nullable!T, T) = T;
-    alias impl(T) = T;
-    alias Unnull = impl!U;
-}
+alias Unnull(N : Nullable!T, T) = T;
+alias Unnull(T) = T;
 
 alias Unboth(T) = Unqual!(Unnull!T);
 enum isSomeDuration(T) = is(Unboth!T == Date) || is(Unboth!T == DateTime) || is(Unboth!T == SysTime) || is(Unboth!T == Duration) || is(Unboth!T == TimeOfDay);
@@ -74,7 +41,7 @@ template isWritableDataMember(T, string Member)
     {
         enum isWritableDataMember = true;
     }
-    else static if (hasUDA!(__traits(getMember, T, Member), IgnoreAttribute))
+    else static if (hasUDA!(__traits(getMember, T, Member), ignore))
     {
         enum isWritableDataMember = false;
     }
@@ -122,7 +89,7 @@ template isReadableDataMember(T, string Member)
     {
         enum isReadableDataMember = true;
     }
-    else static if (hasUDA!(__traits(getMember, T, Member), IgnoreAttribute))
+    else static if (hasUDA!(__traits(getMember, T, Member), ignore))
     {
         enum isReadableDataMember = false;
     }
