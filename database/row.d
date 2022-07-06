@@ -1,188 +1,122 @@
 module database.row;
 
-import std.typecons;
-
-enum Strict
-{
-	yes = 0,
+enum Strict {
+	yes,
 	yesIgnoreNull,
 	no,
 }
 
-package(database):
-struct Row(Value, Header, E : Exception, alias hashOf, alias Mixin)
-{
+package(database)
+struct Row(Value, Header, E : Exception, alias hashOf, alias Mixin) {
 	import std.algorithm;
 	import std.traits;
+	import std.format : format, formattedWrite;
 
-	@property size_t opDollar() const
-	{
-		return values_.length;
-	}
+	ref auto opDispatch(string key)() const { return this[key]; }
 
-	@property const(const(char)[])[] columns() const
-	{
-		return names_;
-	}
-
-	@property ref auto opDispatch(string key)() const
-	{
-		enum hash = hashOf(key);
-		return dispatchFast_(hash, key);
-	}
-
-	auto opSlice() const
-	{
-		return values_;
-	}
-
-	auto opSlice(size_t i, size_t j) const
-	{
-		return values_[i..j];
-	}
-
-	ref auto opIndex(string key) const
-	{
-		if (auto index = find_(hashOf(key), key))
-			return values_[index - 1];
+	ref auto opIndex(string key) const {
+		if (auto index = find(hashOf(key), key))
+			return values[index - 1];
 		throw new E("Column '" ~ key ~ "' was not found in this result set");
 	}
 
-	ref auto opIndex(size_t index) const
-	{
-		return values_[index];
-	}
+	ref auto opIndex(size_t index) { return values[index]; }
 
-	const(Value)* opBinaryRight(string op)(string key) const if (op == "in")
-	{
+	const(Value)* opBinaryRight(string op : "in")(string key) const {
 		if (auto index = find(hashOf(key), key))
-			return &values_[index - 1];
+			return &values[index - 1];
 		return null;
 	}
 
-	int opApply(int delegate(const ref Value value) del) const
-	{
-		foreach (ref v; values_)
+	int opApply(int delegate(const ref Value value) del) const {
+		foreach (ref v; values)
 			if (auto ret = del(v))
 				return ret;
 		return 0;
 	}
 
-	int opApply(int delegate(ref size_t, const ref Value) del) const
-	{
-		foreach (ref size_t i, ref v; values_)
+	int opApply(int delegate(ref size_t, const ref Value) del) const {
+		foreach (ref i, ref v; values)
 			if (auto ret = del(i, v))
 				return ret;
 		return 0;
 	}
 
-	int opApply(int delegate(const ref const(char)[], const ref Value) del) const
-	{
-		foreach (size_t i, ref v; values_)
-			if (auto ret = del(names_[i], v))
+	int opApply(int delegate(const ref string, const ref Value) del) const {
+		foreach (i, ref v; values)
+			if (auto ret = del(_header[i].name, v))
 				return ret;
 		return 0;
 	}
 
-	void toString(Appender)(ref Appender app) const
-	{
-		import std.format : formattedWrite;
-		formattedWrite(&app, "%s", values_);
+	void toString(R)(ref R app) const {
+		formattedWrite(&app, "%s", values);
 	}
 
-	string toString() const
-	{
+	string toString() const {
 		import std.conv : to;
-		return to!string(values_);
+
+		return values.to!string;
 	}
 
-	string[] toStringArray(size_t start = 0, size_t end = ~cast(size_t)0) const
-	{
-		end = min(end, values_.length);
-		start = min(start, values_.length);
-		if (start > end)
-			swap(start, end);
+	string[] toStringArray(size_t start = 0, size_t end = size_t.max) const
+	in (start <= end) {
+		if (end > values.length) end = values.length;
+		if (start > values.length) start = values.length;
 
 		string[] result;
 		result.reserve(end - start);
 		foreach(i; start..end)
-			result ~= values_[i].toString;
+			result ~= values[i].toString;
 		return result;
 	}
 
-	string[string] toAA()
-	{
-		string[string] result;
-		foreach(i, name; names_)
-		{
-			result[name] = values_[i].toString();
-		}
+	void get(T, Strict strict = Strict.yesIgnoreNull)(ref T x) if(isAggregateType!T) {
+		import std.typecons;
 
-		return result;
-	}
-
-	void toStruct(T, Strict strict = Strict.yesIgnoreNull)(ref T x) if(is(Unqual!T == struct))
-	{
-		static if (isTuple!(Unqual!T))
-		{
-			foreach(i, ref f; x.field)
-			{
-				if (i < values_.length)
-				{
-					static if (strict != Strict.yes)
-					{
-						if (!this[i].isNull)
-							f = this[i].get!(Unqual!(typeof(f)));
-					}
-					else
-					{
+		static if (isTuple!(Unqual!T)) {
+			static if (strict != Strict.no)
+				if (x.length >= values.length)
+					throw new PgSQLErrorException("Column %s is out of range for this result set".format(x.length));
+			static foreach(i, ref f; x.tupleof) {
+				static if (strict != Strict.yes) {
+					if (!this[i].isNull)
 						f = this[i].get!(Unqual!(typeof(f)));
-					}
-				}
-				else static if ((strict == Strict.yes) || (strict == Strict.yesIgnoreNull))
-				{
-					throw new E("Column " ~ i ~ " is out of range for this result set");
-				}
+				} else
+					f = this[i].get!(Unqual!(typeof(f)));
 			}
-		}
-		else
-		{
-			structurize!(strict, null)(x);
-		}
+		} else
+			structurize!strict(x);
 	}
 
-	void toStruct(Strict strict, T)(ref T x) if (is(Unqual!T == struct)) {
-		toStruct!(T, strict)(x);
+	T get(T)() if(!isAggregateType!T) {
+		return this[0].get!T;
 	}
 
-	T toStruct(T, Strict strict = Strict.yesIgnoreNull)() if (is(Unqual!T == struct))
-	{
+	T get(T, Strict strict = Strict.yesIgnoreNull)() if(isAggregateType!T) {
 		T result;
-		toStruct!(T, strict)(result);
-
+		get!(T, strict)(result);
 		return result;
 	}
+
+	Value[] values;
+	alias values this;
 
 package(database):
 
-	ref auto dispatchFast_(uint hash, string key) const
-	{
-		if (auto index = find_(hash, key))
-			return opIndex(index - 1);
-		throw new E("Column '" ~ key ~ "' was not found in this result set");
-	}
+	@property Header header() { return _header; }
 
-	void header_(Header header)
-	{
+	@property void header(Header header) {
+		_header = header;
 		auto headerLen = header.length;
-		auto idealLen = (headerLen + (headerLen >> 2));
+		auto idealLen = headerLen + (headerLen >> 2);
 		auto indexLen = index_.length;
 
 		index_[] = 0;
 
-		if (indexLen < idealLen)
-		{
-			indexLen = max(32, indexLen);
+		if (indexLen < idealLen) {
+			if (indexLen < 32)
+				indexLen = 32;
 
 			while (indexLen < idealLen)
 				indexLen <<= 1;
@@ -190,40 +124,31 @@ package(database):
 			index_.length = indexLen;
 		}
 
-		auto mask = (indexLen - 1);
+		auto mask = indexLen - 1;
 		assert((indexLen & mask) == 0);
 
-		names_.length = headerLen;
-		values_.length = headerLen;
-		foreach (index, ref column; header)
-		{
-			names_[index] = column.name;
-
+		values.length = headerLen;
+		foreach (index, ref column; header) {
 			auto hash = hashOf(column.name) & mask;
-			auto probe = 1;
+			uint probe;
 
-			while (true)
-			{
-				if (index_[hash] == 0)
-				{
+			for (;;) {
+				if (index_[hash] == 0) {
 					index_[hash] = cast(uint)index + 1;
 					break;
 				}
 
-				hash = (hash + probe++) & mask;
+				hash = (hash + ++probe) & mask;
 			}
 		}
 	}
 
-	ref auto get_(size_t index)
-	{
-		return values_[index];
-	}
+	ref auto get_(size_t index) { return values[index]; } // TODO
 
 	mixin Mixin;
 
 private:
-	Value[] values_;
-	const(char)[][] names_;
+
+	Header _header;
 	uint[] index_;
 }

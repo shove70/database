@@ -22,7 +22,7 @@ alias MySQLRow = Row!(MySQLValue, MySQLHeader, MySQLErrorException, hashOf, Mixi
 
 private template Mixin()
 {
-	private static bool equalsCI(const(char)[]x, const(char)[] y)
+	private static bool equalsCI(const(char)[] x, const(char)[] y)
 	{
 		import std.ascii;
 
@@ -36,27 +36,21 @@ private template Mixin()
 		return true;
 	}
 
-	package uint find_(uint hash, const(char)[] key) const
+	package uint find(uint hash, const(char)[] key) const
 	{
 		if (auto mask = index_.length - 1) {
 			assert((index_.length & mask) == 0);
 
 			hash = hash & mask;
-			uint probe = 1;
+			uint probe;
 
-			while (true)
-			{
+			for (;;) {
 				auto index = index_[hash];
-				if (index)
-				{
-					if (equalsCI(names_[index - 1], key))
-						return index;
-					hash = (hash + probe++) & mask;
-				}
-				else
-				{
+				if (!index)
 					break;
-				}
+				if (equalsCI(_header[index - 1].name, key))
+					return index;
+				hash = (hash + ++probe) & mask;
 			}
 		}
 
@@ -73,7 +67,7 @@ private template Mixin()
 		enum unCamel = hasUDA!(T, snakeCase);
 		foreach(member; __traits(allMembers, T))
 		{
-			static if (isWritableDataMember!(T, member))
+			static if (isWritableDataMember!(__traits(getMember, T, member)))
 			{
 				static if (!hasUDA!(__traits(getMember, result, member), as))
 				{
@@ -116,16 +110,16 @@ private template Mixin()
 						enum hashAlt = pathMemberAlt.hashOf;
 					}
 
-					auto index = find_(hash, pathMember);
+					auto index = find(hash, pathMember);
 					static if (unCamel && (pathMember != pathMemberAlt))
 					{
 						if (!index)
-							index = find_(hashAlt, pathMemberAlt);
+							index = find(hashAlt, pathMemberAlt);
 					}
 
 					if (index)
 					{
-						auto pvalue = values_[index - 1];
+						auto pvalue = values[index - 1];
 
 						static if (strict == Strict.no || strict == Strict.yesIgnoreNull || hasUDA!(__traits(getMember, result, member), optional))
 						{

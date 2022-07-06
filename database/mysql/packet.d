@@ -11,8 +11,8 @@ struct InputPacket
 
     this(ubyte[]* buffer)
     {
-        buffer_ = buffer;
-        in_ = *buffer_;
+        buf = buffer;
+        in_ = *buf;
     }
 
     T peek(T)() if (!isArray!T)
@@ -52,7 +52,7 @@ struct InputPacket
 
 protected:
 
-    ubyte[]* buffer_;
+    ubyte[]* buf;
     ubyte[] in_;
 }
 
@@ -62,13 +62,13 @@ struct OutputPacket
 
     this(ubyte[]* buffer)
     {
-        buffer_ = buffer;
-        out_ = buffer_.ptr + 4;
+        buf = buffer;
+        out_ = buf.ptr + 4;
     }
 
     pragma(inline, true) void put(T)(T x)
     {
-        put(offset_, x);
+        put(pos, x);
     }
 
     void put(T)(size_t offset, T x) if (!isArray!T)
@@ -76,7 +76,7 @@ struct OutputPacket
         grow(offset, T.sizeof);
 
         *(cast(T*)(out_ + offset)) = x;
-        offset_ = max(offset + T.sizeof, offset_);
+        pos = max(offset + T.sizeof, pos);
     }
 
     void put(T)(size_t offset, T x) if (isArray!T)
@@ -86,36 +86,55 @@ struct OutputPacket
         grow(offset, ValueType.sizeof * x.length);
 
         (cast(ValueType*)(out_ + offset))[0..x.length] = x;
-        offset_ = max(offset + (ValueType.sizeof * x.length), offset_);
+        pos = max(offset + (ValueType.sizeof * x.length), pos);
     }
+
+	size_t marker(T)() if (!isArray!T)
+	{
+		grow(pos, T.sizeof);
+
+		auto place = pos;
+		pos += T.sizeof;
+		return place;
+	}
+
+	size_t marker(T)() if (isArray!T)
+	{
+		alias ValueType = Unqual!(typeof(T.init[0]));
+		grow(pos, ValueType.sizeof * x.length);
+
+		auto place = pos;
+		pos += ValueType.sizeof * x.length;
+		return place;
+	}
 
     void finalize(ubyte seq)
     {
-        if (offset_ >=  0xffffff)
+        if (pos >=  0xffffff)
             throw new MySQLConnectionException("Packet size exceeds 2^24");
-        uint length = cast(uint)offset_;
-        uint header = cast(uint)((offset_ & 0xffffff) | (seq << 24));
-        *(cast(uint*)buffer_.ptr) = header;
+        uint length = cast(uint)pos;
+        uint header = cast(uint)((pos & 0xffffff) | (seq << 24));
+        *(cast(uint*)buf.ptr) = header;
     }
 
     void finalize(ubyte seq, size_t extra)
     {
-        if (offset_ + extra >= 0xffffff)
+        if (pos + extra >= 0xffffff)
             throw new MySQLConnectionException("Packet size exceeds 2^24");
-        uint length = cast(uint)(offset_ + extra);
+        uint length = cast(uint)(pos + extra);
         uint header = cast(uint)((length & 0xffffff) | (seq << 24));
-        *(cast(uint*)buffer_.ptr) = header;
+        *(cast(uint*)buf.ptr) = header;
     }
 
     void reserve(size_t size)
     {
-        (*buffer_).length = max((*buffer_).length, 4 + size);
-        out_ = buffer_.ptr + 4;
+        (*buf).length = max((*buf).length, 4 + size);
+        out_ = buf.ptr + 4;
     }
 
     const(ubyte)[] get() const
     {
-        return (*buffer_)[0..4 + offset_];
+        return (*buf)[0..4 + pos];
     }
 
     mixin OutputPacketMethods;
@@ -126,20 +145,20 @@ protected:
     {
         auto requested = 4 + offset + size;
 
-        if (requested > buffer_.length)
+        if (requested > buf.length)
         {
-            auto capacity = max(128, (*buffer_).capacity);
+            auto capacity = max(128, (*buf).capacity);
             while (capacity < requested)
             {
                 capacity <<= 1;
             }
 
-            buffer_.length = capacity;
-            out_ = buffer_.ptr + 4;
+            buf.length = capacity;
+            out_ = buf.ptr + 4;
         }
     }
 
-    ubyte[]* buffer_;
+    ubyte[]* buf;
     ubyte* out_;
-    size_t offset_;
+    size_t pos;
 }

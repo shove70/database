@@ -23,102 +23,6 @@ alias Unboth(T) = Unqual!(Unnull!T);
 enum isSomeDuration(T) = is(Unboth!T == Date) || is(Unboth!T == DateTime) || is(Unboth!T == SysTime) || is(Unboth!T == Duration) || is(Unboth!T == TimeOfDay);
 enum isValueType(T) = isSomeDuration!(Unboth!T) || is(Unboth!T == MySQLValue) || (!is(Unboth!T == struct) && !is(Unboth!T == class));
 
-template isWritableDataMember(T, string Member)
-{
-    static if (is(TypeTuple!(__traits(getMember, T, Member))))
-    {
-        enum isWritableDataMember = false;
-    }
-    else static if (!is(typeof(__traits(getMember, T, Member))))
-    {
-        enum isWritableDataMember = false;
-    }
-    else static if (is(typeof(__traits(getMember, T, Member)) == void))
-    {
-        enum isWritableDataMember = false;
-    }
-    else static if (is(typeof(__traits(getMember, T, Member)) == enum))
-    {
-        enum isWritableDataMember = true;
-    }
-    else static if (hasUDA!(__traits(getMember, T, Member), ignore))
-    {
-        enum isWritableDataMember = false;
-    }
-    else static if (isArray!(typeof(__traits(getMember, T, Member))) && !is(typeof(typeof(__traits(getMember, T, Member)).init[0]) == ubyte) && !is(typeof(__traits(getMember, T, Member)) == string))
-    {
-        enum isWritableDataMember = false;
-    }
-    else static if (isAssociativeArray!(typeof(__traits(getMember, T, Member))))
-    {
-        enum isWritableDataMember = false;
-    }
-    else static if (isSomeFunction!(typeof(__traits(getMember, T, Member))))
-    {
-        enum isWritableDataMember = false;
-    }
-    else static if (!is(typeof((){ T x = void; __traits(getMember, x, Member) = __traits(getMember, x, Member); }())))
-    {
-        enum isWritableDataMember = false;
-    }
-    else static if ((__traits(getProtection, __traits(getMember, T, Member)) != "public") && (__traits(getProtection, __traits(getMember, T, Member)) != "export"))
-    {
-        enum isWritableDataMember = false;
-    }
-    else
-    {
-        enum isWritableDataMember = true;
-    }
-}
-
-template isReadableDataMember(T, string Member)
-{
-    static if (is(TypeTuple!(__traits(getMember, T, Member))))
-    {
-        enum isReadableDataMember = false;
-    }
-    else static if (!is(typeof(__traits(getMember, T, Member))))
-    {
-        enum isReadableDataMember = false;
-    }
-    else static if (is(typeof(__traits(getMember, T, Member)) == void))
-    {
-        enum isReadableDataMember = false;
-    }
-    else static if (is(typeof(__traits(getMember, T, Member)) == enum))
-    {
-        enum isReadableDataMember = true;
-    }
-    else static if (hasUDA!(__traits(getMember, T, Member), ignore))
-    {
-        enum isReadableDataMember = false;
-    }
-    else static if (isArray!(typeof(__traits(getMember, T, Member))) && !is(typeof(typeof(__traits(getMember, T, Member)).init[0]) == ubyte) && !is(typeof(__traits(getMember, T, Member)) == string))
-    {
-        enum isReadableDataMember = false;
-    }
-    else static if (isAssociativeArray!(typeof(__traits(getMember, T, Member))))
-    {
-        enum isReadableDataMember = false;
-    }
-    else static if (isSomeFunction!(typeof(__traits(getMember, T, Member)))  /* && return type is valueType*/ )
-    {
-        enum isReadableDataMember = true;
-    }
-    else static if (!is(typeof((){ T x = void; __traits(getMember, x, Member) = __traits(getMember, x, Member); }())))
-    {
-        enum isReadableDataMember = false;
-    }
-    else static if ((__traits(getProtection, __traits(getMember, T, Member)) != "public") && (__traits(getProtection, __traits(getMember, T, Member)) != "export"))
-    {
-        enum isReadableDataMember = false;
-    }
-    else
-    {
-        enum isReadableDataMember = true;
-    }
-}
-
 struct MySQLRawString
 {
     @disable this();
@@ -357,7 +261,7 @@ struct MySQLValue
             case MYSQL_TYPE_TIMESTAMP:
             case MYSQL_TYPE_TIMESTAMP2:
                 DateTime dt = (*cast(MySQLDateTime*)buffer_.ptr).to!DateTime();
-                app.put(dt.date().toISOExtString() ~ " " ~ dt.timeOfDay().toISOExtString());
+                app.put(dt.date().toISOExtString() ~ ' ' ~ dt.timeOfDay().toISOExtString());
                 //formattedWrite(&app, "%s", (*cast(MySQLDateTime*)buffer_.ptr).to!DateTime());
                 break;
         }
@@ -811,7 +715,7 @@ struct MySQLColumn
     ushort flags;
     ubyte decimals;
     ColumnTypes type;
-    const(char)[] name;
+    string name;
 }
 
 alias MySQLHeader = MySQLColumn[];

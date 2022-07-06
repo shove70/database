@@ -11,27 +11,20 @@ alias PgSQLRow = Row!(PgSQLValue, PgSQLHeader, PgSQLErrorException, hashOf, Mixi
 
 private template Mixin()
 {
-	package uint find_(size_t hash, const(char)[] key) const
-	{
+	package uint find(size_t hash, string key) const {
 		if (auto mask = index_.length - 1) {
 			assert((index_.length & mask) == 0);
 
-			hash = hash & mask;
-			uint probe = 1;
+			hash &= mask;
+			uint probe;
 
-			while (true)
-			{
+			for (;;) {
 				auto index = index_[hash];
-				if (index)
-				{
-					if (names_[index - 1] == key)
-						return index;
-					hash = (hash + probe++) & mask;
-				}
-				else
-				{
+				if (!index)
 					break;
-				}
+				if (_header[index - 1].name == key)
+					return index;
+				hash = (hash + ++probe) & mask;
 			}
 		}
 		return 0;

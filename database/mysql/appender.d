@@ -5,12 +5,14 @@ import std.traits;
 import database.mysql.type;
 public import database.util : appendValue, appendValues;
 
-void appendValue(Appender, T)(ref Appender appender, T value) if (isScalarType!T)
+void appendValue(R, T)(ref R appender, T value) if (isScalarType!T)
 {
+    import std.conv : to;
+
     appender.put(cast(ubyte[])to!string(value));
 }
 
-void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T == SysTime))
+void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == SysTime))
 {
     value = value.toUTC;
 
@@ -28,7 +30,7 @@ void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T ==
     }
 }
 
-void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T == DateTime))
+void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == DateTime))
 {
     auto hour = value.hour;
     auto minute = value.minute;
@@ -44,17 +46,17 @@ void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T ==
     }
 }
 
-void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T == TimeOfDay))
+void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == TimeOfDay))
 {
     formattedWrite(appender, "%02d%02d%02d", value.hour, value.minute, value.second);
 }
 
-void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T == Date))
+void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == Date))
 {
     formattedWrite(appender, "%04d%02d%02d", value.year, value.month, value.day);
 }
 
-void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T == Duration))
+void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == Duration))
 {
     auto parts = value.split();
     if (parts.days)
@@ -69,24 +71,24 @@ void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T ==
         appender.put('\'');
 }
 
-void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T == MySQLFragment))
+void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == MySQLFragment))
 {
     appender.put(cast(char[])value.data);
 }
 
-void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T == MySQLRawString))
+void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == MySQLRawString))
 {
     appender.put('\'');
     appender.put(cast(char[])value.data);
     appender.put('\'');
 }
 
-void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T == MySQLBinary))
+void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == MySQLBinary))
 {
     appendValue(appender, value.data);
 }
 
-void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T == MySQLValue))
+void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == MySQLValue))
 {
     final switch(value.type) with (ColumnTypes)
     {
@@ -174,7 +176,7 @@ void appendValue(Appender, T)(ref Appender appender, T value) if (is(Unqual!T ==
     }
 }
 
-void appendValue(Appender, T)(ref Appender appender, T value) if (isArray!T && (is(Unqual!(typeof(T.init[0])) == ubyte) || is(Unqual!(typeof(T.init[0])) == char)))
+void appendValue(R, T)(ref R appender, T value) if (isArray!T && (is(Unqual!(typeof(T.init[0])) == ubyte) || is(Unqual!(typeof(T.init[0])) == char)))
 {
     appender.put('\'');
     auto ptr = value.ptr;

@@ -27,6 +27,6 @@ subPackage {
 subPackage {
 	name "util"
 	targetType "library"
-	sourceFiles "database/inserter.d" "database/row.d" "database/util.d"
+	sourceFiles "database/inserter.d" "database/pool.d" "database/row.d" "database/util.d"
 	importPaths "."
 }

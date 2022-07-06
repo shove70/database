@@ -17,14 +17,13 @@ import std.stdio;
 import mysql;
 
 void main() {
-	auto conn = new Connection("host=127.0.0.1;user=root;pwd=pwd;db=test");
-	// auto conn = new Connection("127.0.0.1", "root", "pwd", "test", 3306);
+	auto conn = new Connection("127.0.0.1", "root", "pwd", "test", 3306);
 
 	// change database
 	conn.use("mewmew");
 
 	// simple insert statement
-	conn.execute("insert into users (name, email) values (?, ?)", "frank", "thetank@cowabanga.com");
+	conn.query("insert into users (name, email) values (?, ?)", "frank", "thetank@cowabanga.com");
 	auto id = conn.lastInsertId;
 
 	struct User {
@@ -34,21 +33,15 @@ void main() {
 
 	// simple select statement
 	User[] users;
-	conn.execute("select name, email from users where id > ?", 13, (MySQLRow row) {
-		users ~= row.toStruct!User;
+	conn.query("select name, email from users where id > ?", 13, (MySQLRow row) {
+		users ~= row.get!User;
 	});
 
 
 	// simple select statement
-	string[string][] rows;
-	conn.execute("select name, email from users where id > ?", 13, (MySQLRow row) {
-		rows ~= row.toAA();
-	});
-
-	foreach(row; rows) {
+	conn.query("select name, email from users where id > ?", 13, (MySQLRow row) {
 		writeln(row["name"], row["email"]);
-	}
-
+	});
 
 	// batch inserter - inserts in packets of 128k bytes
 	auto insert = inserter(conn, "users_copy", "name", "email");
@@ -61,14 +54,14 @@ void main() {
 	auto upd = conn.prepare("update users set sequence = ?, login_at = ?, secret = ? where id = ?");
 	ubyte[] bytes = [0x4D, 0x49, 0x4C, 0x4B];
 	foreach(i; 0..100)
-		conn.execute(upd, i, Clock.currTime, MySQLBinary(bytes), i);
+		conn.exec(upd, i, Clock.currTime, MySQLBinary(bytes), i);
 
 
 	// passing variable or large number of arguments
 	string[] names;
 	string[] emails;
 	int[] ids = [1, 1, 3, 5, 8, 13];
-	conn.execute("select name from users where id in " ~ ids.placeholders, ids, (MySQLRow row) {
+	conn.query("select name from users where id in " ~ ids.placeholders, ids, (MySQLRow row) {
 		writeln(row.name.peek!(char[])); // peek() avoids allocation - cannot use result outside delegate
 		names ~= row.name.get!string;    // get() duplicates - safe to use result outside delegate
 		emails ~= row.email.get!string;
@@ -76,17 +69,17 @@ void main() {
 
 
 	// another query example
-	conn.execute("select id, name, email from users where id > ?", 13, (size_t index /*optional*/, MySQLHeader header /*optional*/, MySQLRow row) {
+	conn.query("select id, name, email from users where id > ?", 13, (size_t index /*optional*/, MySQLHeader header /*optional*/, MySQLRow row) {
 		writeln(header[0].name, ": ", row.id.get!int);
 		return (index < 5); // optionally return false to discard remaining results
 	});
 
 
 	// structured row
-	conn.execute("select name, email from users where length(name) > ?", 5, (MySQLRow row) {
-		auto user = row.toStruct!User; // default is strict.yesIgnoreNull - a missing field in the row will throw
-		// auto user = row.toStruct!(User, Strict.yes); // missing or null will throw
-		// auto user = row.toStruct!(User, Strict.no);  // missing or null will just be ignored
+	conn.query("select name, email from users where length(name) > ?", 5, (MySQLRow row) {
+		auto user = row.get!User; // default is strict.yesIgnoreNull - a missing field in the row will throw
+		// auto user = row.get!(User, Strict.yes); // missing or null will throw
+		// auto user = row.get!(User, Strict.no);  // missing or null will just be ignored
 		writeln(user);
 	});
 
@@ -102,8 +95,8 @@ void main() {
 		GeoRef location;
 	}
 
-	conn.execute("select name, lat as `location.lat`, lng as `location.lng` from places", (MySQLRow row) {
-		auto place = row.toStruct!Place;
+	conn.query("select name, lat as `location.lat`, lng as `location.lng` from places", (MySQLRow row) {
+		auto place = row.get!Place;
 		writeln(place.location);
 	});
 
@@ -119,8 +112,8 @@ void main() {
 		@ignore File tumbnail;    // completely ignored
 	}
 
-	conn.execute("select id, name, thumbnail, lat as `location.lat`, lng as `location.lng`, contact_person from places", (MySQLRow row) {
-		auto place = row.toStruct!PlaceFull;
+	conn.query("select id, name, thumbnail, lat as `location.lat`, lng as `location.lng`, contact_person from places", (MySQLRow row) {
+		auto place = row.get!PlaceFull;
 		writeln(place.location);
 	});
 

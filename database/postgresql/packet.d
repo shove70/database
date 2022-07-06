@@ -5,216 +5,169 @@ import std.bitmanip;
 import std.traits;
 import database.postgresql.exception;
 import database.util;
+import core.stdc.string : strlen;
 
-pragma(inline, true) T host(T)(T x) if (isScalarType!T)
-{
-    static if (T.sizeof > 1)
-    {
-        return *cast(T*)(nativeToBigEndian(x).ptr);
-    }
-    else
-    {
-        return x;
-    }
+struct InputPacket {
+	@disable this();
+
+	this(ubyte type, ubyte[] buffer) {
+		typ = type;
+		in_ = buffer;
+	}
+
+	@property ubyte type() const { return typ; }
+
+	T peek(T)() if (!isArray!T) in(T.sizeof <= in_.length) {
+		return native(*(cast(T*)in_.ptr));
+	}
+
+	T eat(T)() if (!isArray!T) in(T.sizeof <= in_.length) {
+		auto ptr = cast(T*)in_.ptr;
+		in_ = in_[T.sizeof..$];
+		return native(*ptr);
+	}
+
+	string peekz() {
+		return cast(string)in_[0..strlen(cast(char*)in_.ptr)];
+	}
+
+	string eatz() {
+		auto len = strlen(cast(char*)in_.ptr);
+		auto result = cast(string)in_[0..len];
+		in_ = in_[len + 1..$];
+		return result;
+	}
+
+	void skipz() {
+		auto len = strlen(cast(char*)in_.ptr);
+		in_ = in_[len + 1..$];
+	}
+
+	T eat(T)(size_t count) if (isArray!T) {
+		alias ValueType = typeof(T.init[0]);
+
+		assert(ValueType.sizeof * count <= in_.length);
+		auto ptr = cast(ValueType*)in_.ptr;
+		in_ = in_[ValueType.sizeof * count..$];
+		return ptr[0..count];
+	}
+
+	mixin InputPacketMethods!PgSQLProtocolException;
+
+	auto get() const
+	{
+		return in_;
+	}
+
+private:
+	ubyte[] in_;
+	ubyte typ;
 }
 
-pragma(inline, true) T native(T)(T x) if (isScalarType!T)
-{
-    static if (T.sizeof > 1)
-    {
-        return bigEndianToNative!T(*cast(ubyte[T.sizeof]*)&x);
-    }
-    else
-    {
-        return x;
-    }
+struct OutputPacket {
+	@disable this();
+
+	this(ubyte[]* buffer) {
+		buf = buffer;
+		implicit = 4;
+		out_ = buf.ptr + 4;
+	}
+
+	this(ubyte type, ubyte[]* buffer) {
+		buf = buffer;
+		implicit = 5;
+		if (buf.length < implicit)
+			buf.length = implicit;
+		*buf.ptr = type;
+		out_ = buf.ptr + implicit;
+	}
+
+	void putz(string x) {
+		put(x);
+		put!ubyte(0);
+	}
+
+	void put(T)(T x) {
+		put(pos, x);
+	}
+
+	pragma(inline, true) void put(T)(size_t offset, T x) if (!isArray!T) {
+		grow(offset, T.sizeof);
+
+		*(cast(T*)(out_ + offset)) = native(x);
+		pos = max(offset + T.sizeof, pos);
+	}
+
+	void put(T)(size_t offset, T x) if (isArray!T) {
+		alias ValueType = Unqual!(typeof(T.init[0]));
+
+		grow(offset, ValueType.sizeof * x.length);
+
+		static if (ValueType.sizeof == 1)
+			(cast(ValueType*)(out_ + offset))[0..x.length] = x;
+		else {
+			auto pout = cast(ValueType*)(out_ + offset);
+			foreach (ref y; x)
+				*pout++ = native(y);
+		}
+		pos = max(offset + (ValueType.sizeof * x.length), pos);
+	}
+
+	void finalize() {
+		if (pos + implicit > int.max)
+			throw new PgSQLConnectionException("Packet size exceeds 2^31");
+		uint p = cast(uint)pos + 4;
+		*(cast(uint*)(buf.ptr + implicit - 4)) = native(p);
+	}
+
+	void reserve(size_t size) {
+		(*buf).length = max((*buf).length, implicit + size);
+		out_ = buf.ptr + implicit;
+	}
+
+	const(ubyte)[] get() const
+	{
+		return (*buf)[0..implicit + pos];
+	}
+
+	mixin OutputPacketMethods;
+
+private:
+	void grow(size_t offset, size_t size) {
+		auto requested = implicit + offset + size;
+		if (requested > buf.length) {
+			auto capacity = max(128, (*buf).capacity);
+			while (capacity < requested)
+				capacity <<= 1;
+			buf.length = capacity;
+			out_ = buf.ptr + implicit;
+		}
+	}
+
+	ubyte[]* buf;
+
+	ubyte* out_;
+	size_t pos, implicit;
 }
 
-pragma(inline, true) T native(T)(ubyte* ptr) if (isScalarType!T)
-{
-    static if (T.sizeof > 1)
-    {
-        return bigEndianToNative!T(*cast(ubyte[T.sizeof]*)ptr);
-    }
-    else
-    {
-        return x.ptr[0];
-    }
+T native(T)(ref T x) {
+	return native!T(&x);
 }
 
-struct InputPacket
-{
-    @disable this();
+T native(T)(const T* ptr) if (isScalarType!T) {
+	import core.bitop;
 
-    this(ubyte type, ubyte[]* buffer)
-    {
-        type_ = type;
-        buffer_ = buffer;
-        in_ = *buffer_;
-    }
-
-    ubyte type() const
-    {
-        return type_;
-    }
-
-    T peek(T)() if (!isArray!T)
-    {
-        assert(T.sizeof <= in_.length);
-        return native(*(cast(T*)in_.ptr));
-    }
-
-    T eat(T)() if (!isArray!T)
-    {
-        assert(T.sizeof <= in_.length);
-        auto ptr = cast(T*)in_.ptr;
-        in_ = in_[T.sizeof..$];
-        return native(*ptr);
-    }
-
-    const(char)[] peekz()
-    {
-        import core.stdc.string : strlen;
-        return cast(const(char)[])in_[0..strlen(cast(char*)in_.ptr)];
-    }
-
-    const(char)[] eatz()
-    {
-        import core.stdc.string : strlen;
-        auto len = strlen(cast(char*)in_.ptr);
-        auto result = cast(const(char)[])in_[0..len];
-        in_ = in_[len + 1..$];
-        return result;
-    }
-
-    void skipz()
-    {
-        import core.stdc.string : strlen;
-        auto len = strlen(cast(char*)in_.ptr);
-        in_ = in_[len + 1..$];
-    }
-
-    T eat(T)(size_t count) if (isArray!T)
-    {
-        alias ValueType = typeof(T.init[0]);
-
-        assert(ValueType.sizeof * count <= in_.length);
-        auto ptr = cast(ValueType*)in_.ptr;
-        in_ = in_[ValueType.sizeof * count..$];
-        return ptr[0..count];
-    }
-
-    mixin InputPacketMethods!PgSQLProtocolException;
-
-    auto get() const
-    {
-        return in_;
-    }
-
-protected:
-
-    ubyte[]* buffer_;
-    ubyte[] in_;
-    ubyte type_;
-}
-
-struct OutputPacket
-{
-    @disable this();
-
-    this(ubyte[]* buffer)
-    {
-        buffer_ = buffer;
-        implicit_ = 4;
-        out_ = buffer_.ptr + 4;
-    }
-
-    this(ubyte type, ubyte[]* buffer)
-    {
-        buffer_ = buffer;
-        implicit_ = 5;
-        if (buffer_.length < implicit_)
-            buffer_.length = implicit_;
-        *buffer_.ptr = type;
-        out_ = buffer_.ptr + implicit_;
-    }
-
-    void putz(const(char)[] x)
-    {
-        put(x);
-        put!ubyte(0);
-    }
-
-    pragma(inline, true) void put(T)(T x)
-    {
-        put(offset_, x);
-    }
-
-    pragma(inline, true) void put(T)(size_t offset, T x) if (!isArray!T)
-    {
-        grow(offset, T.sizeof);
-
-        *(cast(T*)(out_ + offset)) = host(x);
-        offset_ = max(offset + T.sizeof, offset_);
-    }
-
-    void put(T)(size_t offset, T x) if (isArray!T)
-    {
-        alias ValueType = Unqual!(typeof(T.init[0]));
-
-        grow(offset, ValueType.sizeof * x.length);
-
-        static if (ValueType.sizeof == 1)
-        {
-            (cast(ValueType*)(out_ + offset))[0..x.length] = x;
-        }
-        else
-        {
-            auto pout = cast(ValueType*)(out_ + offset);
-            foreach (ref y; x)
-                *pout++ = host(y);
-        }
-        offset_ = max(offset + (ValueType.sizeof * x.length), offset_);
-    }
-
-    void finalize()
-    {
-        if ((offset_ + implicit_) > int.max)
-            throw new PgSQLConnectionException("Packet size exceeds 2^31");
-        *(cast(uint*)(buffer_.ptr + implicit_ - 4)) = host(cast(uint)(4 + offset_));
-    }
-
-    void reserve(size_t size)
-    {
-        (*buffer_).length = max((*buffer_).length, implicit_ + size);
-        out_ = buffer_.ptr + implicit_;
-    }
-
-    const(ubyte)[] get() const
-    {
-        return (*buffer_)[0..implicit_ + offset_];
-    }
-
-    mixin OutputPacketMethods;
-
-protected:
-
-    void grow(size_t offset, size_t size)
-    {
-        auto requested = implicit_ + offset + size;
-        if (requested > buffer_.length)
-        {
-            auto capacity = max(128, (*buffer_).capacity);
-            while (capacity < requested)
-                capacity <<= 1;
-            buffer_.length = capacity;
-            out_ = buffer_.ptr + implicit_;
-        }
-    }
-
-    ubyte[]* buffer_;
-
-    ubyte* out_;
-    size_t offset_;
-    size_t implicit_;
+	version (LittleEndian)
+		enum LE = true;
+	else
+		enum LE = false;
+	static if (T.sizeof > 1 && LE)
+		static if (T.sizeof == 2)
+			return byteswap(*ptr);
+		else static if (T.sizeof == 4)
+			return bswap(*cast(uint*)ptr);
+		else
+			return bswap(*cast(ulong*)ptr);
+	else
+		return *ptr;
 }

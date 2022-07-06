@@ -32,6 +32,42 @@ template KeyName(alias T, string defaultName = T.stringof) {
 		enum KeyName = defaultName;
 }
 
+enum isVisible(alias M) = __traits(getVisibility, M).length == 6; //public or export
+
+private enum fitsInString(T) =
+	!isAssociativeArray!T && (!isArray!T || is(typeof(T.init[0]) == ubyte) ||
+			is(T == string));
+
+template isWritableDataMember(alias M) {
+	alias TM = typeof(M);
+	static if (is(AliasSeq!M) || hasUDA!(M, ignore))
+		enum isWritableDataMember = false;
+	else static if (is(TM == enum))
+		enum isWritableDataMember = true;
+	else static if (!fitsInString!TM || isSomeFunction!TM)
+		enum isWritableDataMember = false;
+	else static if (!is(typeof(() { M = TM.init; }())))
+		enum isWritableDataMember = false;
+	else
+		enum isWritableDataMember = isVisible!M;
+}
+
+template isReadableDataMember(alias M) {
+	alias TM = typeof(M);
+	static if (is(AliasSeq!M) || hasUDA!(M, ignore))
+		enum isReadableDataMember = false;
+	else static if (is(TM == enum))
+		enum isReadableDataMember = true;
+	else static if (!fitsInString!TM)
+		enum isReadableDataMember = false;
+	else static if (isSomeFunction!TM /* && return type is valueType*/ )
+		enum isReadableDataMember = true;
+	else static if (!is(typeof({ TM x = M; })))
+		enum isReadableDataMember = false;
+	else
+		enum isReadableDataMember = isVisible!M;
+}
+
 void appendValues(R, T)(ref R appender, T values)
 if (isArray!T && !isSomeString!(OriginalType!T)) {
 	foreach (i, value; values) {
@@ -50,39 +86,35 @@ if (isInstanceOf!(Nullable, T) || isInstanceOf!(NullableRef, T)) {
 	appendValue(appender, value.isNull ? null : value.get);
 }
 
-@property string placeholders(size_t x, bool parens = true)
-{
-	import std.array;
-	if (x)
-	{
+@property {
+	string placeholders(size_t x, bool parens = true) {
+		import std.array;
+
+		if (!x)
+			return null;
 		auto app = appender!string;
-		if (parens)
-		{
-			app.reserve(x + x - 1);
+		if (parens) {
+			app.reserve((x << 1) - 1);
 
-			app.put('(');
+			app ~= '(';
 			foreach (i; 0..x - 1)
-				app.put("?,");
-			app.put('?');
-			app.put(')');
-		}
-		else
-		{
-			app.reserve(x + x + 1);
+				app ~= "?,";
+			app ~= '?';
+			app ~= ')';
+		} else {
+			app.reserve(x << 1 | 1);
 
 			foreach (i; 0..x - 1)
-				app.put("?,");
-			app.put('?');
+				app ~= "?,";
+			app ~= '?';
 		}
-		return app.data;
+		return app[];
 	}
 
-	return null;
-}
-
-@property string placeholders(T)(T x, bool parens = true) if (is(typeof(() { auto y = x.length; })))
-{
-	return x.length.placeholders(parens);
+	string placeholders(T)(T x, bool parens = true)
+	if (is(typeof(() { auto y = x.length; }))) {
+		return x.length.placeholders(parens);
+	}
 }
 
 enum CharClass {
@@ -206,49 +238,32 @@ template InputPacketMethods(E : Exception) {
 			throw new E("Bad packet format");
 	}
 
-	void skip(size_t count)
-	{
-		assert(count <= in_.length);
+	void skip(size_t count) in(count <= in_.length) {
 		in_ = in_[count..$];
 	}
 
-	auto countUntil(ubyte x, bool expect)
-	{
+	auto countUntil(ubyte x, bool expect) {
 		auto index = in_.countUntil(x);
-		if (expect)
-		{
-			if ((index < 0) || (in_[index] != x))
-				throw new E("Bad packet format");
-		}
+		if (expect && (index < 0 || in_[index] != x))
+			throw new E("Bad packet format");
 		return index;
 	}
 
-	void skipLenEnc()
-	{
+	void skipLenEnc() {
 		auto header = eat!ubyte;
-		if (header >= 0xfb)
-		{
-			switch(header)
-			{
-				case 0xfb:
-					return;
-				case 0xfc:
-					skip(2);
-					return;
-				case 0xfd:
-					skip(3);
-					return;
-				case 0xfe:
-					skip(8);
-					return;
+		if (header >= 0xfb) {
+			switch(header) {
+				case 0xfb: return;
+				case 0xfc: return skip(2);
+				case 0xfd: return skip(3);
+				case 0xfe: return skip(8);
 				default:
 					throw new E("Bad packet format");
 			}
 		}
 	}
 
-	ulong eatLenEnc()
-	{
+	ulong eatLenEnc() {
 		auto header = eat!ubyte;
 		if (header < 0xfb)
 			return header;
@@ -275,24 +290,18 @@ template InputPacketMethods(E : Exception) {
 		}
 	}
 
-	auto remaining() const
-	{
-		return in_.length;
-	}
+	auto remaining() const { return in_.length; }
 
-	bool empty() const
-	{
-		return in_.length == 0;
-	}
+	bool empty() const { return in_.length == 0; }
 }
 
 template OutputPacketMethods() {
 	void putLenEnc(ulong x) {
 		if (x < 0xfb) {
-			put!ubyte(cast(ubyte)x);
+			put(cast(ubyte)x);
 		} else if (x <= ushort.max) {
 			put!ubyte(0xfc);
-			put!ushort(cast(ushort)x);
+			put(cast(ushort)x);
 		} else if (x <= 0xffffff) {
 			put!ubyte(0xfd);
 			_l l = {n: x};
@@ -306,46 +315,18 @@ template OutputPacketMethods() {
 		}
 	}
 
-	size_t marker(T)() if (!isArray!T)
-	{
-		grow(offset_, T.sizeof);
-
-		auto place = offset_;
-		offset_ += T.sizeof;
-		return place;
-	}
-
-	size_t marker(T)() if (isArray!T)
-	{
-		alias ValueType = Unqual!(typeof(T.init[0]));
-		grow(offset_, ValueType.sizeof * x.length);
-
-		auto place = offset_;
-		offset_ += (ValueType.sizeof * x.length);
-		return place;
-	}
-
-	void reset()
-	{
-		offset_ = 0;
-	}
+	void reset() { pos = 0; }
 
 	void fill(ubyte x, size_t size)
 	{
-		grow(offset_, size);
-		out_[offset_..offset_ + size] = 0;
-		offset_ += size;
+		grow(pos, size);
+		out_[pos..pos + size] = 0;
+		pos += size;
 	}
 
-	size_t length() const
-	{
-		return offset_;
-	}
+	size_t length() const { return pos; }
 
-	bool empty() const
-	{
-		return offset_ == 0;
-	}
+	bool empty() const { return pos == 0; }
 }
 
 align(1) union _l {
@@ -377,25 +358,25 @@ struct DBSocket(E : Exception)
 {
 	void connect(scope const(char)[] host, ushort port)
 	{
-		socket_ = new TcpSocket(new InternetAddress(host, port));
-		socket_.setOption(SocketOptionLevel.SOCKET, SocketOption.KEEPALIVE, true);
-		socket_.setOption(SocketOptionLevel.TCP, SocketOption.TCP_NODELAY, true);
-		socket_.setOption(SocketOptionLevel.SOCKET, SocketOption.SNDTIMEO, 30.seconds);
-		socket_.setOption(SocketOptionLevel.SOCKET, SocketOption.RCVTIMEO, 30.seconds);
+		socket = new TcpSocket(new InternetAddress(host, port));
+		socket.setOption(SocketOptionLevel.SOCKET, SocketOption.KEEPALIVE, true);
+		socket.setOption(SocketOptionLevel.TCP, SocketOption.TCP_NODELAY, true);
+		socket.setOption(SocketOptionLevel.SOCKET, SocketOption.SNDTIMEO, 30.seconds);
+		socket.setOption(SocketOptionLevel.SOCKET, SocketOption.RCVTIMEO, 30.seconds);
 	}
 
 	@property bool connected() inout
 	{
-		return socket_ && socket_.isAlive();
+		return socket && socket.isAlive();
 	}
 
 	void close()
 	{
-		if (socket_)
+		if (socket)
 		{
-			socket_.shutdown(SocketShutdown.BOTH);
-			socket_.close();
-			socket_ = null;
+			socket.shutdown(SocketShutdown.BOTH);
+			socket.close();
+			socket = null;
 		}
 	}
 
@@ -405,7 +386,7 @@ struct DBSocket(E : Exception)
 
 		for (size_t off; off < buffer.length; off += len)
 		{
-			len = socket_.receive(buffer[off..$]);
+			len = socket.receive(buffer[off..$]);
 
 			if (len > 0)
 				continue;
@@ -427,7 +408,7 @@ struct DBSocket(E : Exception)
 
 		for (size_t off; off < buffer.length; off += len)
 		{
-			len = socket_.send(buffer[off..$]);
+			len = socket.send(buffer[off..$]);
 
 			if (len > 0)
 				continue;
@@ -443,5 +424,23 @@ struct DBSocket(E : Exception)
 		}
 	}
 
-	private TcpSocket socket_;
+	private TcpSocket socket;
+}
+
+T parse(T)(string data) if (isIntegral!T) {
+	return parse!T(data, 0);
+}
+
+T parse(T)(ref string data, size_t startIndex = 0) if (isIntegral!T)
+in (startIndex <= data.length) {
+	T x;
+	auto i = startIndex;
+	for (; i < data.length; ++i) {
+		char c = data[i];
+		if (c < '0' || c > '9')
+			break;
+		x = x * 10 + (c ^ '0');
+	}
+	data = data[i .. $];
+	return x;
 }

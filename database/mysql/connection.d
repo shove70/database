@@ -22,7 +22,7 @@ alias Socket = DBSocket!MySQLConnectionException;
 immutable CapabilityFlags DefaultClientCaps = CapabilityFlags.CLIENT_LONG_PASSWORD | CapabilityFlags.CLIENT_LONG_FLAG |
 CapabilityFlags.CLIENT_CONNECT_WITH_DB | CapabilityFlags.CLIENT_PROTOCOL_41 | CapabilityFlags.CLIENT_SECURE_CONNECTION | CapabilityFlags.CLIENT_SESSION_TRACK;
 
-struct ConnectionStatus
+struct Status
 {
     ulong affected;
     ulong matched;
@@ -39,9 +39,9 @@ private struct ConnectionSettings
     {
         auto remaining = connectionString;
 
-        auto indexValue = remaining.indexOf("=");
+        auto indexValue = remaining.indexOf('=');
         while (!remaining.empty) {
-            auto indexValueEnd = remaining.indexOf(";", indexValue);
+            auto indexValueEnd = remaining.indexOf(';', indexValue);
             if (indexValueEnd <= 0)
                 indexValueEnd = remaining.length;
 
@@ -90,7 +90,7 @@ private struct ConnectionSettings
 
 private struct ServerInfo
 {
-    const(char)[] versionString;
+    const(char)[] versionStr;
     ubyte protocol;
     ubyte charSet;
     ushort status;
@@ -211,14 +211,55 @@ class Connection
         return PreparedStatement(id, params);
     }
 
-    void executeNoPrepare(Args...)(const(char)[] sql, Args args)
+    alias executeNoPrepare = query;
+
+    void query(Args...)(const(char)[] sql, Args args)
     {
-        query(sql, args);
+        //scope(failure) close();
+
+        static if (args.length == 0)
+        {
+            enum shouldDiscard = true;
+        }
+        else
+        {
+            enum shouldDiscard = !isCallable!(args[$ - 1]);
+        }
+
+        enum argCount = shouldDiscard ? args.length : (args.length - 1);
+
+        static if (argCount)
+        {
+            auto querySQL =  prepareSQL(sql, args[0..argCount]);
+        }
+        else
+        {
+            auto querySQL =  sql;
+        }
+
+        send(Commands.COM_QUERY, querySQL);
+
+        auto answer = retrieve();
+        if (isStatus(answer))
+        {
+            eatStatus(answer);
+        }
+        else
+        {
+            static if (!shouldDiscard)
+            {
+                resultSetText(answer, Commands.COM_QUERY, args[args.length - 1]);
+            }
+            else
+            {
+                discardAll(answer, Commands.COM_QUERY);
+            }
+        }
     }
 
-    void execute(Args...)(const(char)[] sql, Args args)
+    void exec(Args...)(const(char)[] sql, Args args)
     {
-        //scope(failure) close_();
+        //scope(failure) close();
 
         PreparedStatement stmt;
         if (sql in clientPreparedCaches_)
@@ -231,7 +272,7 @@ class Connection
             clientPreparedCaches_[sql] = stmt;
         }
 
-        execute(stmt, args);
+        exec(stmt, args);
         // closePreparedStatement(stmt);
     }
 
@@ -296,9 +337,9 @@ class Connection
         return connected && (status_.flags & StatusFlags.SERVER_STATUS_IN_TRANS);
     }
 
-    void execute(Args...)(PreparedStatement stmt, Args args)
+    void exec(Args...)(PreparedStatement stmt, Args args)
     {
-        //scope(failure) close_();
+        //scope(failure) close();
 
         ensureConnected();
 
@@ -415,7 +456,7 @@ class Connection
         packet.finalize(seq_);
         ++seq_;
 
-        socket_.write(packet.get());
+        socket.write(packet.get());
 
         auto answer = retrieve();
         if (isStatus(answer))
@@ -478,13 +519,13 @@ class Connection
 
     @property bool connected() const
     {
-        return socket_.connected;
+        return socket.connected;
     }
 
     void close()
     {
         clearClientPreparedCache();
-        socket_.close();
+        socket.close();
     }
 
     void reuse()
@@ -512,7 +553,10 @@ class Connection
         return trace_;
     }
 
-package:
+package(database):
+
+	bool pooled;
+	DateTime releaseTime;
 
     @property bool busy()
     {
@@ -529,80 +573,11 @@ package:
         }
     }
 
-    @property bool pooled()
-    {
-        return pooled_;
-    }
-
-    @property void pooled(bool value)
-    {
-        pooled_ = value;
-    }
-
-    @property DateTime releaseTime()
-    {
-        return releaseTime_;
-    }
-
-    @property void releaseTime(DateTime value)
-    {
-        releaseTime_ = value;
-    }
-
 private:
-
-    void close_()
-    {
-        close();
-    }
-
-    void query(Args...)(const(char)[] sql, Args args)
-    {
-        //scope(failure) close_();
-
-        static if (args.length == 0)
-        {
-            enum shouldDiscard = true;
-        }
-        else
-        {
-            enum shouldDiscard = !isCallable!(args[args.length - 1]);
-        }
-
-        enum argCount = shouldDiscard ? args.length : (args.length - 1);
-
-        static if (argCount)
-        {
-            auto querySQL =  prepareSQL(sql, args[0..argCount]);
-        }
-        else
-        {
-            auto querySQL =  sql;
-        }
-
-        send(Commands.COM_QUERY, querySQL);
-
-        auto answer = retrieve();
-        if (isStatus(answer))
-        {
-            eatStatus(answer);
-        }
-        else
-        {
-            static if (!shouldDiscard)
-            {
-                resultSetText(answer, Commands.COM_QUERY, args[args.length - 1]);
-            }
-            else
-            {
-                discardAll(answer, Commands.COM_QUERY);
-            }
-        }
-    }
 
     void connect()
     {
-        socket_.connect(settings_.host, settings_.port);
+        socket.connect(settings_.host, settings_.port);
 
         seq_ = 0;
         eatHandshake(retrieve());
@@ -624,16 +599,16 @@ private:
         header.finalize(seq_, length);
         ++seq_;
 
-        socket_.write(header.get());
+        socket.write(header.get());
         if (length)
         {
-            socket_.write(data[0..length]);
+            socket.write(data[0..length]);
         }
     }
 
     void ensureConnected()
     {
-        if (!socket_.connected)
+        if (!socket.connected)
         {
             connect();
         }
@@ -685,10 +660,10 @@ private:
 
     InputPacket retrieve()
     {
-        //scope(failure) close_();
+        //scope(failure) close();
 
         ubyte[4] header;
-        socket_.read(header);
+        socket.read(header);
 
         auto len = header[0] | (header[1] << 8) | (header[2] << 16);
         auto seq = header[3];
@@ -701,7 +676,7 @@ private:
         ++seq_;
 
         in_.length = len;
-        socket_.read(in_);
+        socket.read(in_);
 
         if (in_.length != len)
         {
@@ -713,12 +688,12 @@ private:
 
     void eatHandshake(InputPacket packet)
     {
-        //scope(failure) close_();
+        //scope(failure) close();
 
         check(packet, true);
 
         server_.protocol = packet.eat!ubyte;
-        server_.versionString = packet.eat!(const(char)[])(packet.countUntil(0, true)).dup;
+        server_.versionStr = packet.eat!(const(char)[])(packet.countUntil(0, true)).dup;
         packet.skip(1);
 
         server_.connection = packet.eat!uint;
@@ -832,7 +807,7 @@ private:
         reply.finalize(seq_);
         ++seq_;
 
-        socket_.write(reply.get());
+        socket.write(reply.get());
 
         eatStatus(retrieve());
     }
@@ -986,8 +961,7 @@ private:
         packet.skip(cast(size_t)packet.eatLenEnc());    // table
         packet.skip(cast(size_t)packet.eatLenEnc());    // original_table
         auto len = cast(size_t)packet.eatLenEnc();
-        columns_ ~= packet.eat!(const(char)[])(len);
-        def.name = columns_[$ - len..$];
+        def.name = packet.eat!(const(char)[])(len).idup;
         packet.skip(cast(size_t)packet.eatLenEnc());    // original_name
         packet.skipLenEnc();                            // next_length
         packet.skip(2);                                 // charset
@@ -1067,7 +1041,7 @@ private:
 
     void resultSetRow(InputPacket packet, MySQLHeader header, ref MySQLRow row)
     {
-        assert(row.columns.length == header.length);
+        assert(row.values.length == header.length);
 
         packet.expect!ubyte(0);
         auto nulls = packet.eat!(ubyte[])((header.length + 2 + 7) >> 3);
@@ -1092,11 +1066,9 @@ private:
 
     void resultSet(RowHandler)(InputPacket packet, uint stmt, Commands cmd, RowHandler handler)
     {
-        columns_.length = 0;
-
         auto columns = cast(size_t)packet.eatLenEnc();
-        columnDefs(columns, cmd, header_);
-        row_.header_(header_);
+        columnDefs(columns, cmd, header);
+        row_.header(header);
 
         auto status = retrieve();
         if (status.peek!ubyte == StatusPackets.ERR_Packet)
@@ -1128,8 +1100,8 @@ private:
                         break;
                     }
 
-                    resultSetRow(row, header_, row_);
-                    if (!callHandler(handler, index++, header_, row_))
+                    resultSetRow(row, header, row_);
+                    if (!callHandler(handler, index++, header, row_))
                     {
                         discardUntilEOF(retrieve());
                         statusFlags = 0;
@@ -1150,8 +1122,8 @@ private:
                     break;
                 }
 
-                resultSetRow(row, header_, row_);
-                if (!callHandler(handler, index++, header_, row_))
+                resultSetRow(row, header, row_);
+                if (!callHandler(handler, index++, header, row_))
                 {
                     discardUntilEOF(retrieve());
                     break;
@@ -1162,7 +1134,7 @@ private:
 
     void resultSetRowText(InputPacket packet, MySQLHeader header, ref MySQLRow row)
     {
-        assert(row.columns.length == header.length);
+        assert(row.values.length == header.length);
 
         foreach(i, ref column; header)
         {
@@ -1182,11 +1154,9 @@ private:
 
     void resultSetText(RowHandler)(InputPacket packet, Commands cmd, RowHandler handler)
     {
-        columns_.length = 0;
-
         auto columns = cast(size_t)packet.eatLenEnc();
-        columnDefs(columns, cmd, header_);
-        row_.header_(header_);
+        columnDefs(columns, cmd, header);
+        row_.header(header);
 
         eatEOF(retrieve());
 
@@ -1203,8 +1173,8 @@ private:
                 break;
             }
 
-            resultSetRowText(row, header_, row_);
-            if (!callHandler(handler, index++, header_, row_))
+            resultSetRowText(row, header, row_);
+            if (!callHandler(handler, index++, header, row_))
             {
                 discardUntilEOF(retrieve());
                 break;
@@ -1215,7 +1185,7 @@ private:
     void discardAll(InputPacket packet, Commands cmd)
     {
         auto columns = cast(size_t)packet.eatLenEnc();
-        columnDefs(columns, cmd, header_);
+        columnDefs(columns, cmd, header);
 
         auto statusFlags = eatEOF(retrieve());
         if ((statusFlags & StatusFlags.SERVER_STATUS_CURSOR_EXISTS) == 0)
@@ -1405,10 +1375,9 @@ private:
         }
     }
 
-    Socket socket_;
-    MySQLHeader header_;
+    Socket socket;
+    MySQLHeader header;
     MySQLRow row_;
-    char[] columns_;
     char[] info_;
     char[] schema_;
     ubyte[] in_;
@@ -1417,7 +1386,7 @@ private:
     Appender!(char[]) sql_;
 
     CapabilityFlags caps_;
-    ConnectionStatus status_;
+    Status status_;
     ConnectionSettings settings_;
     ServerInfo server_;
 
@@ -1427,8 +1396,6 @@ private:
     PreparedStatement[const(char)[]] clientPreparedCaches_;
 
     bool busy_;
-    bool pooled_;
-    DateTime releaseTime_;
 }
 
 private auto copyUpToNext(ref Appender!(char[]) app, ref const(char)[] sql)
