@@ -50,7 +50,7 @@ struct Row(Value, Header, E : Exception, alias hashOf, alias Mixin) {
 	}
 
 	void toString(R)(ref R app) const {
-		formattedWrite(&app, "%s", values);
+		app.formattedWrite("%s", values);
 	}
 
 	string toString() const {

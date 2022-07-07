@@ -54,11 +54,6 @@ struct InputPacket {
 
 	mixin InputPacketMethods!PgSQLProtocolException;
 
-	auto get() const
-	{
-		return in_;
-	}
-
 private:
 	ubyte[] in_;
 	ubyte typ;

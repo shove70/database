@@ -232,8 +232,7 @@ unittest {
 package(database):
 
 template InputPacketMethods(E : Exception) {
-	void expect(T)(T x)
-	{
+	void expect(T)(T x) {
 		if (x != eat!T)
 			throw new E("Bad packet format");
 	}
@@ -253,13 +252,13 @@ template InputPacketMethods(E : Exception) {
 		auto header = eat!ubyte;
 		if (header >= 0xfb) {
 			switch(header) {
-				case 0xfb: return;
-				case 0xfc: return skip(2);
-				case 0xfd: return skip(3);
-				case 0xfe: return skip(8);
-				default:
-					throw new E("Bad packet format");
+			case 0xfb: return;
+			case 0xfc: return skip(2);
+			case 0xfd: return skip(3);
+			case 0xfe: return skip(8);
+			default:
 			}
+			throw new E("Bad packet format");
 		}
 	}
 
@@ -268,26 +267,20 @@ template InputPacketMethods(E : Exception) {
 		if (header < 0xfb)
 			return header;
 
-		ulong lo;
-		ulong hi;
-
-		switch(header)
-		{
-			case 0xfb:
-				return 0;
-			case 0xfc:
-				return eat!ushort;
-			case 0xfd:
-				lo = eat!ubyte;
-				hi = eat!ushort;
-				return lo | (hi << 8);
-			case 0xfe:
-				lo = eat!uint;
-				hi = eat!uint;
-				return lo | (hi << 32);
-			default:
-				throw new E("Bad packet format");
+		switch(header) {
+		case 0xfb: return 0;
+		case 0xfc: return eat!ushort;
+		case 0xfd:
+			_l l = {lo_8: eat!ubyte,
+					hi_16: eat!ushort};
+			return l.n;
+		case 0xfe:
+			_l l = {lo: eat!uint,
+					hi: eat!uint};
+			return l.n;
+		default:
 		}
+		throw new E("Bad packet format");
 	}
 
 	auto remaining() const { return in_.length; }

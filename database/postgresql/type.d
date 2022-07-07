@@ -115,29 +115,29 @@ struct PgSQLValue {
 			app.put(*cast(bool*)&p ? "TRUE" : "FALSE");
 			break;
 		case CHAR:
-			formattedWrite(&app, "%s", *cast(ubyte*)&p);
+			app.formattedWrite("%s", *cast(ubyte*)&p);
 			break;
 		case INT2:
-			formattedWrite(&app, "%d", *cast(short*)&p);
+			app.formattedWrite("%d", *cast(short*)&p);
 			break;
 		case INT4:
-			formattedWrite(&app, "%d", *cast(int*)&p);
+			app.formattedWrite("%d", *cast(int*)&p);
 			break;
 		case INT8:
-			formattedWrite(&app, "%d", *cast(long*)&p);
+			app.formattedWrite("%d", *cast(long*)&p);
 			break;
 		case REAL:
-			formattedWrite(&app, "%g", *cast(float*)&p);
+			app.formattedWrite("%g", *cast(float*)&p);
 			break;
 		case DOUBLE:
-			formattedWrite(&app, "%g", *cast(double*)&p);
+			app.formattedWrite("%g", *cast(double*)&p);
 			break;
 		case POINT, LSEG, PATH, BOX, POLYGON, LINE:
 		case TINTERVAL:
 		case CIRCLE:
 		case JSONB:
 		case BYTEA:
-			formattedWrite(&app, "%s", arr);
+			app.formattedWrite("%s", arr);
 			break;
 		case MONEY:
 		case TEXT, NAME:
@@ -196,8 +196,8 @@ struct PgSQLValue {
 		case REAL: return cast(T)*cast(float*)&p;
 		case DOUBLE: return cast(T)*cast(double*)&p;
 		default:
-			throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 		}
+		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
 
 	T get(T)() const if (is(Unqual!T == SysTime)) {
@@ -205,8 +205,8 @@ struct PgSQLValue {
 		case TIMESTAMP, TIMESTAMPTZ:
 			return timestamp.toSysTime;
 		default:
-			throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 		}
+		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
 
 	T get(T)() const if (is(Unqual!T == DateTime)) {
@@ -214,8 +214,8 @@ struct PgSQLValue {
 		case TIMESTAMP, TIMESTAMPTZ:
 			return timestamp.toDateTime;
 		default:
-			throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 		}
+		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
 
 	T get(T)() const if (is(Unqual!T == TimeOfDay)) {
@@ -225,8 +225,8 @@ struct PgSQLValue {
 		case TIMESTAMP, TIMESTAMPTZ:
 			return timestamp.toTimeOfDay;
 		default:
-			throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 		}
+		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
 
 	T get(T)() const if (is(Unqual!T == Duration)) {
@@ -235,8 +235,8 @@ struct PgSQLValue {
 		case TIMESTAMP, TIMESTAMPTZ:
 			return timestamp.time.toDuration;
 		default:
-			throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 		}
+		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
 
 	T get(T)() const if (is(Unqual!T == Date)) {
@@ -245,8 +245,8 @@ struct PgSQLValue {
 		case TIMESTAMP, TIMESTAMPTZ:
 			return timestamp.date;
 		default:
-			throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 		}
+		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
 
 	T get(T)() const if (is(Unqual!T == enum)) {
@@ -268,8 +268,8 @@ struct PgSQLValue {
 			else
 				return dup(cast(T)arr);
 		default:
-			throw new PgSQLErrorException("Cannot convert %s to array".format(type_.columnTypeName));
 		}
+		throw new PgSQLErrorException("Cannot convert %s to array".format(type_.columnTypeName));
 	}
 
 	T peek(T)(lazy T def) const {
@@ -280,7 +280,7 @@ struct PgSQLValue {
 		return get!T;
 	}
 
-	T peek(T)() const if (isDynamicArray!T && !is(T == enum)) {
+	T peek(T)() const if (is(T == U[], U)) {
 		switch(type_) with (PgType) {
 		case NUMERIC:
 		case MONEY:
@@ -291,8 +291,8 @@ struct PgSQLValue {
 		case VARCHAR, CHARA:
 			return cast(T)arr;
 		default:
-			throw new PgSQLErrorException("Cannot convert %s to array".format(type_.columnTypeName));
 		}
+		throw new PgSQLErrorException("Cannot convert %s to array".format(type_.columnTypeName));
 	}
 	@property @safe nothrow @nogc {
 
@@ -313,8 +313,8 @@ struct PgSQLValue {
 			case VARCHAR, CHARA:
 				return true;
 			default:
-				return false;
 			}
+			return false;
 		}
 
 		bool isScalar() const {
@@ -324,8 +324,8 @@ struct PgSQLValue {
 			case REAL, DOUBLE:
 				return true;
 			default:
-				return false;
 			}
+			return false;
 		}
 
 		bool isFloat() const {
@@ -447,8 +447,8 @@ struct PgSQLTime {
 		return TimeOfDay(hour + hoffset, minute + moffset, second);
 	}
 
-	void toString(W)(ref W writer) const {
-		writer.formattedWrite("%02d:%02d:%02d", hour, minute, second);
+	void toString(W)(ref W w) const {
+		w.formattedWrite("%02d:%02d:%02d", hour, minute, second);
 		if (usec) {
 			uint usecabv = usec;
 			if (usecabv % 1000 == 0)
@@ -457,17 +457,17 @@ struct PgSQLTime {
 				usecabv /= 100;
 			if (usecabv % 10 == 0)
 				usecabv /= 10;
-			writer.formattedWrite(".%d", usecabv);
+			w.formattedWrite(".%d", usecabv);
 		}
 		if (hoffset || moffset) {
 			if (hoffset < 0 || moffset < 0) {
-				writer.formattedWrite("-%02d", -hoffset);
+				w.formattedWrite("-%02d", -hoffset);
 				if (moffset)
-					writer.formattedWrite(":%02d", -moffset);
+					w.formattedWrite(":%02d", -moffset);
 			} else {
-				writer.formattedWrite("+%02d", hoffset);
+				w.formattedWrite("+%02d", hoffset);
 				if (moffset)
-					writer.formattedWrite(":%02d", moffset);
+					w.formattedWrite(":%02d", moffset);
 			}
 		}
 	}
