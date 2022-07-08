@@ -578,9 +578,8 @@ void eatValueText(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue 
 		return;
 	}
 	auto svalue = packet.eat!string(length);
-	final switch(column.type) with (PgType) {
-	case UNKNOWN:
-	case NULL:
+	switch(column.type) with (PgType) {
+	case UNKNOWN, NULL:
 		value = PgSQLValue(null);
 		break;
 	case BOOL:
@@ -603,32 +602,15 @@ void eatValueText(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue 
 		break;
 	case DOUBLE:
 		value = PgSQLValue(svalue.to!double);
-		goto case;
-	case POINT:
-	case LSEG:
-	case PATH:
-	case BOX:
-	case POLYGON:
-	case LINE:
-	case TINTERVAL:
-	case CIRCLE:
 		break;
 
 	case NUMERIC:
 	case MONEY:
-	case BIT:
-	case VARBIT:
-	case INET:
-	case CIDR:
-	case MACADDR:
-	case MACADDR8:
-	case UUID:
-	case JSON:
-	case XML:
-	case TEXT:
-	case NAME:
-	case VARCHAR:
-	case CHARA:
+	case BIT, VARBIT:
+	case INET, CIDR, MACADDR, MACADDR8:
+	case UUID, JSON, XML:
+	case TEXT, NAME:
+	case VARCHAR, CHARA:
 		value = PgSQLValue(column.type, svalue);
 		break;
 	case BYTEA:
@@ -642,17 +624,13 @@ void eatValueText(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue 
 	case DATE:
 		value = PgSQLValue(parseDate(svalue));
 		break;
-	case TIME:
-	case TIMETZ:
+	case TIME, TIMETZ:
 		value = PgSQLValue(parsePgSQLTime(svalue));
 		break;
-	case TIMESTAMP:
-	case TIMESTAMPTZ:
+	case TIMESTAMP, TIMESTAMPTZ:
 		value = PgSQLValue(parsePgSQLTimestamp(svalue));
-		goto case;
-	case INTERVAL:
-	case JSONB:
 		break;
+	default:
 	}
 }
 
