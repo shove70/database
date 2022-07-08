@@ -1,0 +1,32 @@
+name "database"
+description "Lightweight native MySQL/MariaDB & PostgreSQL driver"
+authors "Marcio Martins" "Shove"
+copyright "Copyright © 2017-2020, Marcio Martins, Shove"
+license "MIT"
+dependency ":mysql" version="*"
+dependency ":postgresql" version="*"
+targetType "library"
+sourcePaths "source"
+importPaths "source"
+subPackage {
+	name "mysql"
+	description "Lightweight native MySQL/MariaDB driver"
+	dependency "database:util" version="*"
+	targetType "library"
+	sourcePaths "database/mysql"
+	importPaths "."
+}
+subPackage {
+	name "postgresql"
+	description "Lightweight native PostgreSQL driver"
+	dependency "database:util" version="*"
+	targetType "library"
+	sourcePaths "database/postgresql"
+	importPaths "."
+}
+subPackage {
+	name "util"
+	targetType "library"
+	sourceFiles "database/inserter.d" "database/pool.d" "database/row.d" "database/util.d"
+	importPaths "."
+}
