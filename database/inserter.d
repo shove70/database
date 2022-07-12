@@ -157,16 +157,11 @@ struct DBInserter(Connection, E : Exception, char quote, alias isValueType, alia
 					appendValue(values_, __traits(getMember, param, member));
 					return true;
 				}
-			} else {
+			} else
 				foreach (subMember; __traits(allMembers, memberType)) {
-					static if (parentMembers == "") {
-						if (tryAppendField!(subMember, member ~ '.')(__traits(getMember, param, member), fieldHash))
-							return true;
-					} else
-						if (tryAppendField!(subMember, parentMembers ~ member ~ '.')(__traits(getMember, param, member), fieldHash))
-							return true;
+					if (tryAppendField!(subMember, parentMembers ~ member ~ '.')(__traits(getMember, param, member), fieldHash))
+						return true;
 				}
-			}
 		}
 		return false;
 	}

@@ -17,7 +17,7 @@ import std.stdio;
 import mysql;
 
 void main() {
-    auto conn = new Connection("127.0.0.1", "root", "pwd", "test", 3306);
+	auto conn = new Connection("127.0.0.1", "root", "pwd", "test", 3306);
 
 	// change database
 	conn.use("mewmew");
