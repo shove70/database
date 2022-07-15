@@ -2,7 +2,6 @@ module database.postgresql.type;
 
 import std.algorithm;
 import std.array : appender;
-import std.conv : to;
 import std.datetime;
 import std.format: format, formattedWrite;
 import std.meta : AliasSeq;
@@ -571,6 +570,7 @@ auto parsePgSQLTimestamp(ref string x) {
 
 void eatValueText(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue value) {
 	import std.array;
+	import std.conv : to;
 
 	auto length = packet.eat!uint;
 	if (length == uint.max) {

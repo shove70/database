@@ -120,7 +120,7 @@ struct OutputPacket {
 		out_ = buf.ptr + implicit;
 	}
 
-	const(ubyte)[] get() const {
+	const(ubyte)[] data() const {
 		return (*buf)[0..implicit + pos];
 	}
 

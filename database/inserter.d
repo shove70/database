@@ -40,6 +40,8 @@ template InserterHelpers(Connection, Inserter) {
 	}
 }
 
+// dfmt off
+
 struct DBInserter(Connection, E : Exception, char quote, alias isValueType, alias appendValue)
 {
 	@disable this();

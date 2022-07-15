@@ -224,7 +224,7 @@ private:
 		startup.put!ubyte(0);
 		startup.finalize();
 
-		socket.write(startup.get());
+		socket.write(startup.data);
 
 		if (eatAuth(retrieve()))
 			eatAuth(retrieve());
@@ -240,7 +240,7 @@ private:
 		cmd.put!ubyte(0);
 		cmd.finalize();
 
-		socket.write(cmd.get());
+		socket.write(cmd.data);
 	}
 
 	void ensureConnected() {
@@ -328,20 +328,19 @@ private:
 						reply.put("md5");
 						reply.putz(MD5toHex(MD5toHex(settings_.pwd, settings_.user), salt));
 						break;
-					case 6: // SCM
+					/+ case 6: // SCM
 					case 7: // GSS
 					case 8:
 					case 9:
 					case 10: // SASL
 					case 11:
-					case 12:
-						goto default;
+					case 12: +/
 					default:
 						throw new PgSQLProtocolException("Unsupported authentication method: %s".format(auth));
 				}
 
 				reply.finalize();
-				socket.write(reply.get());
+				socket.write(reply.data);
 				break;
 			case NoticeResponse:
 				eatNoticeResponse(packet);

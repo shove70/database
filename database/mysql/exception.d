@@ -1,73 +1,55 @@
 module database.mysql.exception;
 
-class MySQLException : Exception
-{
-    this(string msg, string file = __FILE__, size_t line = __LINE__) pure
-    {
+class MySQLException : Exception {
+    this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
         super(msg, file, line);
     }
 }
 
-class MySQLConnectionException: MySQLException
-{
-    this(string msg, string file = __FILE__, size_t line = __LINE__) pure
-    {
+class MySQLConnectionException : MySQLException {
+    this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
         super(msg, file, line);
     }
 }
 
-class MySQLProtocolException: MySQLException
-{
-    this(string msg, string file = __FILE__, size_t line = __LINE__) pure
-    {
+class MySQLProtocolException : MySQLException {
+    this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
         super(msg, file, line);
     }
 }
 
-class MySQLErrorException : Exception
-{
-    this(string msg, string file = __FILE__, size_t line = __LINE__) pure
-    {
+class MySQLErrorException : Exception {
+    this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
         super(msg, file, line);
     }
 }
 
-class MySQLDuplicateEntryException : MySQLErrorException
-{
-    this(string msg, string file = __FILE__, size_t line = __LINE__) pure
-    {
+class MySQLDuplicateEntryException : MySQLErrorException {
+    this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
         super(msg, file, line);
     }
 }
 
-class MySQLDataTooLongException : MySQLErrorException
-{
-    this(string msg, string file = __FILE__, size_t line = __LINE__) pure
-    {
+class MySQLDataTooLongException : MySQLErrorException {
+    this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
         super(msg, file, line);
     }
 }
 
-class MySQLDeadlockFoundException : MySQLErrorException
-{
-    this(string msg, string file = __FILE__, size_t line = __LINE__) pure
-    {
+class MySQLDeadlockFoundException : MySQLErrorException {
+    this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
         super(msg, file, line);
     }
 }
 
-class MySQLTableDoesntExistException : MySQLErrorException
-{
-    this(string msg, string file = __FILE__, size_t line = __LINE__) pure
-    {
+class MySQLTableDoesntExistException : MySQLErrorException {
+    this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
         super(msg, file, line);
     }
 }
 
-class MySQLLockWaitTimeoutException : MySQLErrorException
-{
-    this(string msg, string file = __FILE__, size_t line = __LINE__) pure
-    {
+class MySQLLockWaitTimeoutException : MySQLErrorException {
+    this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
         super(msg, file, line);
     }
 }

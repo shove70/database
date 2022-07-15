@@ -1,6 +1,5 @@
 module database.util;
 
-public import std.exception : basicExceptionCtors;
 import core.stdc.errno;
 import core.time;
 import std.exception;
@@ -16,7 +15,7 @@ enum ignore; // @suppress(dscanner.style.phobos_naming_convention)
 
 enum optional; // @suppress(dscanner.style.phobos_naming_convention)
 
-/// Get the keyname of `T`
+/// Get the keyname of `T`, return empty if fails
 template KeyName(alias T, string defaultName = T.stringof) {
 	import std.traits;
 
@@ -97,14 +96,14 @@ if (isInstanceOf!(Nullable, T) || isInstanceOf!(NullableRef, T)) {
 			app.reserve((x << 1) - 1);
 
 			app ~= '(';
-			foreach (i; 0..x - 1)
+			foreach (i; 0 .. x - 1)
 				app ~= "?,";
 			app ~= '?';
 			app ~= ')';
 		} else {
 			app.reserve(x << 1 | 1);
 
-			foreach (i; 0..x - 1)
+			foreach (i; 0 .. x - 1)
 				app ~= "?,";
 			app ~= '?';
 		}
@@ -237,8 +236,9 @@ template InputPacketMethods(E : Exception) {
 			throw new E("Bad packet format");
 	}
 
-	void skip(size_t count) in(count <= in_.length) {
-		in_ = in_[count..$];
+	void skip(size_t count)
+	in (count <= in_.length) {
+		in_ = in_[count .. $];
 	}
 
 	auto countUntil(ubyte x, bool expect) {
@@ -247,7 +247,7 @@ template InputPacketMethods(E : Exception) {
 			throw new E("Bad packet format");
 		return index;
 	}
-
+	// dfmt off
 	void skipLenEnc() {
 		auto header = eat!ubyte;
 		if (header >= 0xfb) {
@@ -286,6 +286,7 @@ template InputPacketMethods(E : Exception) {
 	auto remaining() const { return in_.length; }
 
 	bool empty() const { return in_.length == 0; }
+	// dfmt on
 }
 
 template OutputPacketMethods() {
@@ -308,18 +309,23 @@ template OutputPacketMethods() {
 		}
 	}
 
-	void reset() { pos = 0; }
+	void reset() {
+		pos = 0;
+	}
 
-	void fill(ubyte x, size_t size)
-	{
+	void fill(ubyte x, size_t size) {
 		grow(pos, size);
-		out_[pos..pos + size] = 0;
+		out_[pos .. pos + size] = 0;
 		pos += size;
 	}
 
-	size_t length() const { return pos; }
+	size_t length() const {
+		return pos;
+	}
 
-	bool empty() const { return pos == 0; }
+	bool empty() const {
+		return pos == 0;
+	}
 }
 
 align(1) union _l {
@@ -347,10 +353,8 @@ align(1) union _l {
 	ulong n;
 }
 
-struct DBSocket(E : Exception)
-{
-	void connect(scope const(char)[] host, ushort port)
-	{
+struct DBSocket(E : Exception) {
+	void connect(scope const(char)[] host, ushort port) {
 		socket = new TcpSocket(new InternetAddress(host, port));
 		socket.setOption(SocketOptionLevel.SOCKET, SocketOption.KEEPALIVE, true);
 		socket.setOption(SocketOptionLevel.TCP, SocketOption.TCP_NODELAY, true);
@@ -358,28 +362,23 @@ struct DBSocket(E : Exception)
 		socket.setOption(SocketOptionLevel.SOCKET, SocketOption.RCVTIMEO, 30.seconds);
 	}
 
-	@property bool connected() inout
-	{
-		return socket && socket.isAlive();
+	@property bool connected() inout {
+		return socket && socket.isAlive;
 	}
 
-	void close()
-	{
-		if (socket)
-		{
+	void close() {
+		if (socket) {
 			socket.shutdown(SocketShutdown.BOTH);
 			socket.close();
 			socket = null;
 		}
 	}
 
-	void read(void[] buffer)
-	{
-		long len;
+	void read(void[] buffer) {
+		long len = void;
 
-		for (size_t off; off < buffer.length; off += len)
-		{
-			len = socket.receive(buffer[off..$]);
+		for (size_t off; off < buffer.length; off += len) {
+			len = socket.receive(buffer[off .. $]);
 
 			if (len > 0)
 				continue;
@@ -387,21 +386,18 @@ struct DBSocket(E : Exception)
 			if (len == 0)
 				throw new E("Server closed the connection");
 
-			if (errno == EINTR || errno == EAGAIN/* || errno == EWOULDBLOCK*/)
+			if (errno == EINTR || errno == EAGAIN /* || errno == EWOULDBLOCK*/ )
 				len = 0;
 			else
-
 				throw new E("Received std.socket.Socket.ERROR: " ~ formatSocketError(errno));
 		}
 	}
 
-	void write(in void[] buffer)
-	{
+	void write(in void[] buffer) {
 		long len;
 
-		for (size_t off; off < buffer.length; off += len)
-		{
-			len = socket.send(buffer[off..$]);
+		for (size_t off; off < buffer.length; off += len) {
+			len = socket.send(buffer[off .. $]);
 
 			if (len > 0)
 				continue;
@@ -409,10 +405,9 @@ struct DBSocket(E : Exception)
 			if (len == 0)
 				throw new E("Server closed the connection");
 
-			if (errno == EINTR || errno == EAGAIN/* || errno == EWOULDBLOCK*/)
+			if (errno == EINTR || errno == EAGAIN /* || errno == EWOULDBLOCK*/ )
 				len = 0;
 			else
-
 				throw new E("Sent std.socket.Socket.ERROR: " ~ formatSocketError(errno));
 		}
 	}

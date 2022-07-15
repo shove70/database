@@ -102,8 +102,6 @@ struct Row(Value, Header, E : Exception, alias hashOf, alias Mixin) {
 	Value[] values;
 	alias values this;
 
-package(database):
-
 	@property Header header() { return _header; }
 
 	@property void header(Header header) {
@@ -143,6 +141,7 @@ package(database):
 		}
 	}
 
+package(database):
 	ref auto get_(size_t index) { return values[index]; } // TODO
 
 	mixin Mixin;
