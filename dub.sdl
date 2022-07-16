@@ -12,7 +12,6 @@ subPackage {
 	name "mysql"
 	description "Lightweight native MySQL/MariaDB driver"
 	dependency "database:util" version="*"
-	targetType "library"
 	sourcePaths "database/mysql"
 	importPaths "."
 }
@@ -20,13 +19,26 @@ subPackage {
 	name "postgresql"
 	description "Lightweight native PostgreSQL driver"
 	dependency "database:util" version="*"
-	targetType "library"
 	sourcePaths "database/postgresql"
+	configuration "default" {
+		importPaths "."
+	}
+	configuration "noMD5Auth" {
+		importPaths "."
+		versions "NoMD5Auth"
+	}
+}
+subPackage {
+	name "sqlite"
+	description "Lightweight SQLite3 driver"
+	dependency "database:util" version="*"
+	libs "sqlite3"
+	sourcePaths "database/sqlite"
 	importPaths "."
 }
 subPackage {
 	name "util"
-	targetType "library"
-	sourceFiles "database/inserter.d" "database/pool.d" "database/row.d" "database/util.d"
+	dflags "-preview=in" "-dip1008"
+	sourceFiles "database/inserter.d" "database/pool.d" "database/row.d" "database/sqlbuilder.d" "database/util.d"
 	importPaths "."
 }

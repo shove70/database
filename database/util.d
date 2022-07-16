@@ -1,11 +1,20 @@
 module database.util;
 
-import core.stdc.errno;
-import core.time;
-import std.exception;
-import std.socket;
-import std.traits;
-import std.typecons;
+// dfmt off
+import core.stdc.errno,
+	core.time,
+	std.exception,
+	std.socket,
+	std.string,
+	std.traits,
+	std.typecons;
+// dfmt on
+
+class DBException : Exception {
+	this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
+		super(msg, file, line);
+	}
+}
 
 struct as { // @suppress(dscanner.style.phobos_naming_convention)
 	string name;
@@ -29,6 +38,20 @@ template KeyName(alias T, string defaultName = T.stringof) {
 			enum KeyName = attr(defaultName);
 	static if (is(typeof(KeyName) == void))
 		enum KeyName = defaultName;
+}
+
+enum {
+	default0 = "default '0'",
+	notnull = "not null",
+	unique = "unique"
+}
+
+struct sqlkey { // @suppress(dscanner.style.phobos_naming_convention)
+	string key;
+}
+
+struct sqltype { // @suppress(dscanner.style.phobos_naming_convention)
+	string type;
 }
 
 enum isVisible(alias M) = __traits(getVisibility, M).length == 6; //public or export
@@ -116,6 +139,7 @@ if (isInstanceOf!(Nullable, T) || isInstanceOf!(NullableRef, T)) {
 	}
 }
 
+private:
 enum CharClass {
 	Other,
 	LowerCase,
@@ -140,6 +164,7 @@ CharClass classify(char ch) pure {
 	}
 }
 
+public:
 S snakeCase(S)(S input, char sep = '_') {
 	if (!input.length)
 		return "";
@@ -229,6 +254,27 @@ unittest {
 }
 
 package(database):
+alias CutOut(size_t I, T...) = AliasSeq!(T[0 .. I], T[I + 1 .. $]);
+
+template getSQLFields(string prefix, string suffix, T) {
+	import std.meta;
+
+	enum colNames = ColumnNames!T,
+		I = staticIndexOf!("rowid", colNames),
+		sql(S...) = prefix ~ [S].quoteJoin(suffix == "=?" ? "=?," : ",")
+		~ suffix;
+	// Skips "rowid" field
+	static if (I >= 0)
+		enum sqlFields = CutOut!(I, colNames);
+	else
+		enum sqlFields = colNames;
+}
+
+alias toz = toStringz;
+
+auto toStr(T)(T ptr) {
+	return fromStringz(ptr).idup;
+}
 
 template InputPacketMethods(E : Exception) {
 	void expect(T)(T x) {
@@ -415,6 +461,7 @@ struct DBSocket(E : Exception) {
 	private TcpSocket socket;
 }
 
+public:
 T parse(T)(string data) if (isIntegral!T) {
 	return parse!T(data, 0);
 }

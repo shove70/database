@@ -1,6 +1,9 @@
 module database.postgresql.exception;
 
-class PgSQLException : Exception {
+import database.util : DBException;
+
+
+class PgSQLException : DBException {
 	this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
 		super(msg, file, line);
 	}
@@ -18,7 +21,7 @@ class PgSQLProtocolException : PgSQLException {
 	}
 }
 
-class PgSQLErrorException : Exception {
+class PgSQLErrorException : DBException {
 	this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
 		super(msg, file, line);
 	}

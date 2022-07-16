@@ -3,8 +3,8 @@ module database.postgresql.packet;
 import std.algorithm;
 import std.bitmanip;
 import std.traits;
-import database.postgresql.exception;
 import database.util;
+public import database.postgresql.exception;
 import core.stdc.string : strlen;
 
 struct InputPacket {

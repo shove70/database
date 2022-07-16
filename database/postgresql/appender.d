@@ -1,11 +1,14 @@
 module database.postgresql.appender;
 
-import std.conv;
-import std.datetime;
-import std.format;
-import std.traits;
-import database.postgresql.protocol;
-import database.postgresql.type;
+// dfmt off
+import
+	std.conv,
+	std.datetime,
+	std.format,
+	std.traits,
+	database.postgresql.protocol,
+	database.postgresql.type;
+// dfmt on
 public import database.util : appendValue, appendValues;
 
 void appendValue(R, T)(ref R appender, T value) if (isScalarType!T) {
