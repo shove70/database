@@ -2,7 +2,6 @@ module database.postgresql.type;
 
 import std.algorithm;
 import std.array : appender;
-import std.conv : to;
 import std.datetime;
 import std.format: format, formattedWrite;
 import std.meta : AliasSeq;
@@ -10,7 +9,6 @@ import std.traits;
 import std.typecons;
 import database.postgresql.protocol;
 import database.postgresql.packet;
-import database.postgresql.exception;
 import database.postgresql.row;
 public import database.util;
 
@@ -567,73 +565,4 @@ auto parsePgSQLTimestamp(ref string x) {
 	x.skip();
 	auto time = parsePgSQLTime(x);
 	return PgSQLTimestamp(date, time);
-}
-
-void eatValueText(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue value) {
-	import std.array;
-
-	auto length = packet.eat!uint;
-	if (length == uint.max) {
-		value = PgSQLValue(null);
-		return;
-	}
-	auto svalue = packet.eat!string(length);
-	switch(column.type) with (PgType) {
-	case UNKNOWN, NULL:
-		value = PgSQLValue(null);
-		break;
-	case BOOL:
-		value = PgSQLValue(svalue[0] == 't');
-		break;
-	case CHAR:
-		value = PgSQLValue(svalue[0]);
-		break;
-	case INT2:
-		value = PgSQLValue(svalue.to!short);
-		break;
-	case INT4:
-		value = PgSQLValue(svalue.to!int);
-		break;
-	case INT8:
-		value = PgSQLValue(svalue.to!long);
-		break;
-	case REAL:
-		value = PgSQLValue(svalue.to!float);
-		break;
-	case DOUBLE:
-		value = PgSQLValue(svalue.to!double);
-		break;
-
-	case NUMERIC:
-	case MONEY:
-	case BIT, VARBIT:
-	case INET, CIDR, MACADDR, MACADDR8:
-	case UUID, JSON, XML:
-	case TEXT, NAME:
-	case VARCHAR, CHARA:
-		value = PgSQLValue(column.type, svalue);
-		break;
-	case BYTEA:
-		if (svalue.length >= 2)
-			svalue = svalue[2 .. $];
-		auto data = uninitializedArray!(ubyte[])(svalue.length >> 1);
-		foreach (i; 0 .. data.length)
-			data[i] = cast(ubyte)(hexDecode(svalue[i << 1]) << 4 | hexDecode(svalue[i << 1 | 1]));
-		value = PgSQLValue(column.type, data);
-		break;
-	case DATE:
-		value = PgSQLValue(parseDate(svalue));
-		break;
-	case TIME, TIMETZ:
-		value = PgSQLValue(parsePgSQLTime(svalue));
-		break;
-	case TIMESTAMP, TIMESTAMPTZ:
-		value = PgSQLValue(parsePgSQLTimestamp(svalue));
-		break;
-	default:
-	}
-}
-
-private uint hexDecode(char c) @safe @nogc pure nothrow {
-	return c + 9 * (c >> 6) & 15;
 }

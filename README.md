@@ -10,14 +10,14 @@ avoiding unnecessary allocations and work for the garbage collector
 
 Native. No link, No harm :)
 
-## example
+## MySQL example
 ```d
 import std.datetime;
 import std.stdio;
 import mysql;
 
 void main() {
-    auto conn = new Connection("127.0.0.1", "root", "pwd", "test", 3306);
+	auto conn = new Connection("127.0.0.1", "root", "pwd", "test", 3306);
 
 	// change database
 	conn.use("mewmew");
@@ -37,7 +37,6 @@ void main() {
 		users ~= row.get!User;
 	});
 
-
 	// simple select statement
 	conn.query("select name, email from users where id > ?", 13, (MySQLRow row) {
 		writeln(row["name"], row["email"]);
@@ -49,13 +48,11 @@ void main() {
 		insert.row(user.name, user.email);
 	insert.flush;
 
-
 	// re-usable prepared statements
 	auto upd = conn.prepare("update users set sequence = ?, login_at = ?, secret = ? where id = ?");
 	ubyte[] bytes = [0x4D, 0x49, 0x4C, 0x4B];
 	foreach(i; 0..100)
 		conn.exec(upd, i, Clock.currTime, MySQLBinary(bytes), i);
-
 
 	// passing variable or large number of arguments
 	string[] names;
@@ -67,13 +64,11 @@ void main() {
 		emails ~= row.email.get!string;
 	});
 
-
 	// another query example
 	conn.query("select id, name, email from users where id > ?", 13, (size_t index /*optional*/, MySQLHeader header /*optional*/, MySQLRow row) {
 		writeln(header[0].name, ": ", row.id.get!int);
 		return (index < 5); // optionally return false to discard remaining results
 	});
-
 
 	// structured row
 	conn.query("select name, email from users where length(name) > ?", 5, (MySQLRow row) {
@@ -82,7 +77,6 @@ void main() {
 		// auto user = row.get!(User, Strict.no);  // missing or null will just be ignored
 		writeln(user);
 	});
-
 
 	// structured row with nested structs
 	struct GeoRef {
@@ -99,7 +93,6 @@ void main() {
 		auto place = row.get!Place;
 		writeln(place.location);
 	});
-
 
 	// structured row annotations
 	struct PlaceFull {
@@ -129,5 +122,65 @@ void main() {
 	}
 
 	conn.close();
+}
+```
+
+
+## PGSQL example
+```d
+import std.stdio;
+import postgresql;
+
+@snakeCase struct PlaceOwner {
+@snakeCase:
+    @sqlkey() uint placeID; // matches place_id
+    uint locationId; // matches location_id
+    string ownerName; // matches owner_name
+    string feedURL; // matches feed_url
+}
+
+PgSQLDB db;
+db.connect("127.0.0.1", 5432, "postgres", "postgres", "postgres");
+db.exec(`CREATE TABLE IF NOT EXISTS company(
+ID INT PRIMARY KEY	NOT NULL,
+name		TEXT	NOT NULL,
+age			INT		NOT NULL,
+address		CHAR(50),
+salary		REAL,
+join_date	DATE
+);`);
+assert(db.hasTable("company"));
+db.create!PlaceOwner;
+db.insert(PlaceOwner(1, 1, "foo", ""));
+db.insert(PlaceOwner(2, 1, "bar", ""));
+db.insert(PlaceOwner(3, 3, "baz", ""));
+auto s = db.selectOneWhere!(PlaceOwner, "owner_name=?")("bar");
+assert(s.placeID == 2);
+foreach (row; db.selectAllWhere!(PlaceOwner, "location_id=?")(1))
+    writeln(row);
+assert(db.exec("drop table place_owner"));
+assert(db.exec("drop table company"));
+db.close();
+```
+
+## SQLite example
+```d
+import database.sqlite.db;
+
+auto db = new SQLite3DB("file.db");
+db.exec("INSERT INTO user (name, id) VALUES (?, ?)", name, id);
+```
+
+```d
+struct User {
+    ulong id;
+    string name;
+    void[] pixels;
+};
+
+User[] users;
+auto q = db.query("SELECT id,name FROM user");
+while(q.step()) {
+    users ~= q.get!User;
 }
 ```

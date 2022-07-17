@@ -23,29 +23,31 @@ enum allStringOrStringArray(T...) = T.length && allSatisfy!(isSomeStringOrString
 package(database):
 
 template InserterHelpers(Connection, Inserter) {
-	auto inserter(ref Connection connection) {
-		return Inserter(&connection);
+	auto inserter(Connection connection) {
+		return Inserter(connection);
 	}
 
-	auto inserter(Args...)(ref Connection connection, OnDuplicate action, string tableName, Args columns) {
-		auto insert = Inserter(&connection);
+	auto inserter(Args...)(Connection connection, OnDuplicate action, string tableName, Args columns) {
+		auto insert = Inserter(connection);
 		insert.start(action, tableName, columns);
 		return insert;
 	}
 
-	auto inserter(Args...)(ref Connection connection, string tableName, Args columns) {
-		auto insert = Inserter(&connection);
+	auto inserter(Args...)(Connection connection, string tableName, Args columns) {
+		auto insert = Inserter(connection);
 		insert.start(OnDuplicate.fail, tableName, columns);
 		return insert;
 	}
 }
+
+// dfmt off
 
 struct DBInserter(Connection, E : Exception, char quote, alias isValueType, alias appendValue)
 {
 	@disable this();
 	@disable this(this);
 
-	this(Connection* connection) in(connection) {
+	this(Connection connection) in(connection) {
 		conn = connection;
 		pending_ = 0;
 		flushes_ = 0;
@@ -157,16 +159,11 @@ struct DBInserter(Connection, E : Exception, char quote, alias isValueType, alia
 					appendValue(values_, __traits(getMember, param, member));
 					return true;
 				}
-			} else {
+			} else
 				foreach (subMember; __traits(allMembers, memberType)) {
-					static if (parentMembers == "") {
-						if (tryAppendField!(subMember, member ~ '.')(__traits(getMember, param, member), fieldHash))
-							return true;
-					} else
-						if (tryAppendField!(subMember, parentMembers ~ member ~ '.')(__traits(getMember, param, member), fieldHash))
-							return true;
+					if (tryAppendField!(subMember, parentMembers ~ member ~ '.')(__traits(getMember, param, member), fieldHash))
+						return true;
 				}
-			}
 		}
 		return false;
 	}
@@ -275,7 +272,7 @@ private:
 	char[] start_, dupUpdate;
 	Appender!(char[]) values_;
 
-	Connection* conn;
+	Connection conn;
 	size_t pending_,
 		flushes_,
 		fields_,

@@ -3,8 +3,8 @@ module database.postgresql.packet;
 import std.algorithm;
 import std.bitmanip;
 import std.traits;
-import database.postgresql.exception;
 import database.util;
+public import database.postgresql.exception;
 import core.stdc.string : strlen;
 
 struct InputPacket {
@@ -18,7 +18,7 @@ struct InputPacket {
 	@property ubyte type() const { return typ; }
 
 	T peek(T)() if (!isArray!T) in(T.sizeof <= in_.length) {
-		return native(*(cast(T*)in_.ptr));
+		return native(*cast(T*)in_.ptr);
 	}
 
 	T eat(T)() if (!isArray!T) in(T.sizeof <= in_.length) {
@@ -89,7 +89,7 @@ struct OutputPacket {
 	pragma(inline, true) void put(T)(size_t offset, T x) if (!isArray!T) {
 		grow(offset, T.sizeof);
 
-		*(cast(T*)(out_ + offset)) = native(x);
+		*cast(T*)(out_ + offset) = native(x);
 		pos = max(offset + T.sizeof, pos);
 	}
 
@@ -105,14 +105,14 @@ struct OutputPacket {
 			foreach (ref y; x)
 				*pout++ = native(y);
 		}
-		pos = max(offset + (ValueType.sizeof * x.length), pos);
+		pos = max(offset + ValueType.sizeof * x.length, pos);
 	}
 
 	void finalize() {
 		if (pos + implicit > int.max)
 			throw new PgSQLConnectionException("Packet size exceeds 2^31");
 		uint p = cast(uint)pos + 4;
-		*(cast(uint*)(buf.ptr + implicit - 4)) = native(p);
+		*cast(uint*)(buf.ptr + implicit - 4) = native(p);
 	}
 
 	void reserve(size_t size) {
@@ -120,8 +120,7 @@ struct OutputPacket {
 		out_ = buf.ptr + implicit;
 	}
 
-	const(ubyte)[] get() const
-	{
+	const(ubyte)[] data() const {
 		return (*buf)[0..implicit + pos];
 	}
 

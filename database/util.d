@@ -1,12 +1,20 @@
 module database.util;
 
-public import std.exception : basicExceptionCtors;
-import core.stdc.errno;
-import core.time;
-import std.exception;
-import std.socket;
-import std.traits;
-import std.typecons;
+// dfmt off
+import core.stdc.errno,
+	core.time,
+	std.exception,
+	std.socket,
+	std.string,
+	std.traits,
+	std.typecons;
+// dfmt on
+
+class DBException : Exception {
+	this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
+		super(msg, file, line);
+	}
+}
 
 struct as { // @suppress(dscanner.style.phobos_naming_convention)
 	string name;
@@ -16,7 +24,7 @@ enum ignore; // @suppress(dscanner.style.phobos_naming_convention)
 
 enum optional; // @suppress(dscanner.style.phobos_naming_convention)
 
-/// Get the keyname of `T`
+/// Get the keyname of `T`, return empty if fails
 template KeyName(alias T, string defaultName = T.stringof) {
 	import std.traits;
 
@@ -30,6 +38,20 @@ template KeyName(alias T, string defaultName = T.stringof) {
 			enum KeyName = attr(defaultName);
 	static if (is(typeof(KeyName) == void))
 		enum KeyName = defaultName;
+}
+
+enum {
+	default0 = "default '0'",
+	notnull = "not null",
+	unique = "unique"
+}
+
+struct sqlkey { // @suppress(dscanner.style.phobos_naming_convention)
+	string key;
+}
+
+struct sqltype { // @suppress(dscanner.style.phobos_naming_convention)
+	string type;
 }
 
 enum isVisible(alias M) = __traits(getVisibility, M).length == 6; //public or export
@@ -97,14 +119,14 @@ if (isInstanceOf!(Nullable, T) || isInstanceOf!(NullableRef, T)) {
 			app.reserve((x << 1) - 1);
 
 			app ~= '(';
-			foreach (i; 0..x - 1)
+			foreach (i; 0 .. x - 1)
 				app ~= "?,";
 			app ~= '?';
 			app ~= ')';
 		} else {
 			app.reserve(x << 1 | 1);
 
-			foreach (i; 0..x - 1)
+			foreach (i; 0 .. x - 1)
 				app ~= "?,";
 			app ~= '?';
 		}
@@ -117,6 +139,7 @@ if (isInstanceOf!(Nullable, T) || isInstanceOf!(NullableRef, T)) {
 	}
 }
 
+private:
 enum CharClass {
 	Other,
 	LowerCase,
@@ -141,6 +164,7 @@ CharClass classify(char ch) pure {
 	}
 }
 
+public:
 S snakeCase(S)(S input, char sep = '_') {
 	if (!input.length)
 		return "";
@@ -230,6 +254,27 @@ unittest {
 }
 
 package(database):
+alias CutOut(size_t I, T...) = AliasSeq!(T[0 .. I], T[I + 1 .. $]);
+
+template getSQLFields(string prefix, string suffix, T) {
+	import std.meta;
+
+	enum colNames = ColumnNames!T,
+		I = staticIndexOf!("rowid", colNames),
+		sql(S...) = prefix ~ [S].quoteJoin(suffix == "=?" ? "=?," : ",")
+		~ suffix;
+	// Skips "rowid" field
+	static if (I >= 0)
+		enum sqlFields = CutOut!(I, colNames);
+	else
+		enum sqlFields = colNames;
+}
+
+alias toz = toStringz;
+
+auto toStr(T)(T ptr) {
+	return fromStringz(ptr).idup;
+}
 
 template InputPacketMethods(E : Exception) {
 	void expect(T)(T x) {
@@ -237,8 +282,9 @@ template InputPacketMethods(E : Exception) {
 			throw new E("Bad packet format");
 	}
 
-	void skip(size_t count) in(count <= in_.length) {
-		in_ = in_[count..$];
+	void skip(size_t count)
+	in (count <= in_.length) {
+		in_ = in_[count .. $];
 	}
 
 	auto countUntil(ubyte x, bool expect) {
@@ -247,7 +293,7 @@ template InputPacketMethods(E : Exception) {
 			throw new E("Bad packet format");
 		return index;
 	}
-
+	// dfmt off
 	void skipLenEnc() {
 		auto header = eat!ubyte;
 		if (header >= 0xfb) {
@@ -286,6 +332,7 @@ template InputPacketMethods(E : Exception) {
 	auto remaining() const { return in_.length; }
 
 	bool empty() const { return in_.length == 0; }
+	// dfmt on
 }
 
 template OutputPacketMethods() {
@@ -308,18 +355,23 @@ template OutputPacketMethods() {
 		}
 	}
 
-	void reset() { pos = 0; }
+	void reset() {
+		pos = 0;
+	}
 
-	void fill(ubyte x, size_t size)
-	{
+	void fill(ubyte x, size_t size) {
 		grow(pos, size);
-		out_[pos..pos + size] = 0;
+		out_[pos .. pos + size] = 0;
 		pos += size;
 	}
 
-	size_t length() const { return pos; }
+	size_t length() const {
+		return pos;
+	}
 
-	bool empty() const { return pos == 0; }
+	bool empty() const {
+		return pos == 0;
+	}
 }
 
 align(1) union _l {
@@ -347,10 +399,8 @@ align(1) union _l {
 	ulong n;
 }
 
-struct DBSocket(E : Exception)
-{
-	void connect(scope const(char)[] host, ushort port)
-	{
+struct DBSocket(E : Exception) {
+	void connect(scope const(char)[] host, ushort port) {
 		socket = new TcpSocket(new InternetAddress(host, port));
 		socket.setOption(SocketOptionLevel.SOCKET, SocketOption.KEEPALIVE, true);
 		socket.setOption(SocketOptionLevel.TCP, SocketOption.TCP_NODELAY, true);
@@ -358,28 +408,23 @@ struct DBSocket(E : Exception)
 		socket.setOption(SocketOptionLevel.SOCKET, SocketOption.RCVTIMEO, 30.seconds);
 	}
 
-	@property bool connected() inout
-	{
-		return socket && socket.isAlive();
+	@property bool connected() inout {
+		return socket && socket.isAlive;
 	}
 
-	void close()
-	{
-		if (socket)
-		{
+	void close() {
+		if (socket) {
 			socket.shutdown(SocketShutdown.BOTH);
 			socket.close();
 			socket = null;
 		}
 	}
 
-	void read(void[] buffer)
-	{
-		long len;
+	void read(void[] buffer) {
+		long len = void;
 
-		for (size_t off; off < buffer.length; off += len)
-		{
-			len = socket.receive(buffer[off..$]);
+		for (size_t off; off < buffer.length; off += len) {
+			len = socket.receive(buffer[off .. $]);
 
 			if (len > 0)
 				continue;
@@ -387,21 +432,18 @@ struct DBSocket(E : Exception)
 			if (len == 0)
 				throw new E("Server closed the connection");
 
-			if (errno == EINTR || errno == EAGAIN/* || errno == EWOULDBLOCK*/)
+			if (errno == EINTR || errno == EAGAIN /* || errno == EWOULDBLOCK*/ )
 				len = 0;
 			else
-
 				throw new E("Received std.socket.Socket.ERROR: " ~ formatSocketError(errno));
 		}
 	}
 
-	void write(in void[] buffer)
-	{
+	void write(in void[] buffer) {
 		long len;
 
-		for (size_t off; off < buffer.length; off += len)
-		{
-			len = socket.send(buffer[off..$]);
+		for (size_t off; off < buffer.length; off += len) {
+			len = socket.send(buffer[off .. $]);
 
 			if (len > 0)
 				continue;
@@ -409,10 +451,9 @@ struct DBSocket(E : Exception)
 			if (len == 0)
 				throw new E("Server closed the connection");
 
-			if (errno == EINTR || errno == EAGAIN/* || errno == EWOULDBLOCK*/)
+			if (errno == EINTR || errno == EAGAIN /* || errno == EWOULDBLOCK*/ )
 				len = 0;
 			else
-
 				throw new E("Sent std.socket.Socket.ERROR: " ~ formatSocketError(errno));
 		}
 	}
@@ -420,6 +461,7 @@ struct DBSocket(E : Exception)
 	private TcpSocket socket;
 }
 
+public:
 T parse(T)(string data) if (isIntegral!T) {
 	return parse!T(data, 0);
 }

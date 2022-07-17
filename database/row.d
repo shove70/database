@@ -102,10 +102,9 @@ struct Row(Value, Header, E : Exception, alias hashOf, alias Mixin) {
 	Value[] values;
 	alias values this;
 
-package(database):
-
 	@property Header header() { return _header; }
 
+package(database):
 	@property void header(Header header) {
 		_header = header;
 		auto headerLen = header.length;
