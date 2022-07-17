@@ -1,22 +1,19 @@
 module database.pool;
 
 import core.thread;
-import std.stdio;
-import std.array;
 import std.concurrency;
 import std.datetime;
-import std.algorithm.searching : any;
-import std.algorithm.mutation : remove;
+import std.algorithm : any, remove;
 import std.exception : enforce, collectException;
 
-package(database) final class ConnectionProvider(Connection, alias flags) {
+final class ConnectionProvider(Connection, alias flags) {
 	private alias ConnectionPool = typeof(this),
 	Flags = typeof(cast()flags);
 
-	static ConnectionPool getInstance(string host, string user, string password, string database, ushort port = 3306,
-		uint maxConnections = 10, uint initialConnections = 3, uint incrementalConnections = 3, uint waitSeconds = 5,
-		Flags caps = flags)
-	in (initialConnections > 0 && incrementalConnections > 0) {
+	static ConnectionPool getInstance(string host, string user, string password, string database,
+		ushort port = flags ? 3306 : 5432, uint maxConnections = 10, uint initialConnections = 3,
+		uint incrementalConnections = 3, uint waitSeconds = 5, Flags caps = flags)
+	in (initialConnections && incrementalConnections) {
 		if (_instance is null) {
 			synchronized (ConnectionPool.classinfo) {
 				if (_instance is null) {
@@ -32,7 +29,7 @@ package(database) final class ConnectionProvider(Connection, alias flags) {
 	private this(string host, string user, string password, string database, ushort port,
 		uint maxConnections, uint initialConnections, uint incrementalConnections, uint waitSeconds,
 		Flags caps) shared {
-		_pool = cast(shared Tid)spawn(new shared Pool(host, user, password, database, port,
+		_pool = cast(shared)spawn(new shared Pool(host, user, password, database, port,
 				maxConnections, initialConnections, incrementalConnections, waitSeconds.seconds, caps));
 		_waitSeconds = waitSeconds;
 		while (!_instantiated)
@@ -40,14 +37,12 @@ package(database) final class ConnectionProvider(Connection, alias flags) {
 	}
 
 	~this() shared {
-		(cast(Tid)_pool).send(new shared Terminate(cast(shared Tid)thisTid));
+		(cast()_pool).send(new shared Terminate(cast(shared)thisTid));
 
 	L_receive:
-		try {
-			receive(
-				(shared Terminate _) { return; }
-			);
-		} catch (OwnerTerminated e) {
+		try
+			receive((shared Terminate _) {});
+		catch (OwnerTerminated e) {
 			if (e.tid != thisTid)
 				goto L_receive;
 		}
@@ -56,7 +51,7 @@ package(database) final class ConnectionProvider(Connection, alias flags) {
 	}
 
 	Connection getConnection() shared {
-		(cast(Tid)_pool).send(new shared RequestConnection(cast(shared Tid)thisTid));
+		(cast()_pool).send(new shared RequestConnection(cast(shared Tid)thisTid));
 		Connection conn;
 
 	L_receive:
@@ -78,16 +73,15 @@ package(database) final class ConnectionProvider(Connection, alias flags) {
 		enforce(conn.pooled, "This connection is not a managed connection in the pool.");
 		enforce(!conn.inTransaction, "This connection also has uncommitted or unrollbacked transaction.");
 
-		(cast(Tid)_pool).send(cast(shared)conn);
+		(cast()_pool).send(cast(shared)conn);
 		conn = null;
 	}
 
 private:
-
 	__gshared ConnectionPool _instance;
 
 	Tid _pool;
-	int _waitSeconds;
+	uint _waitSeconds;
 
 	shared static bool _instantiated;
 
@@ -113,7 +107,7 @@ private:
 		}
 
 		void opCall() shared {
-			auto loop = true;
+			bool loop = true;
 
 			while (loop) {
 				try {
@@ -121,32 +115,29 @@ private:
 						(shared RequestConnection req) { getConnection(req); },
 						(shared Connection conn) { releaseConnection(conn); },
 						(shared Terminate t) {
-						foreach (conn; _pool) {
-							(cast(Connection)conn).close();
-						}
+						foreach (conn; _pool)
+							(cast()conn).close();
 
-						(cast(Tid)t.tid).send(t);
+						(cast()t.tid).send(t);
 						loop = false;
 					}
 					);
-				} catch (OwnerTerminated e) {
+				} catch (OwnerTerminated) {
 				}
 
 				// Shrink the pool.
-				DateTime now = cast(DateTime)Clock.currTime;
-				if (((now - _lastShrinkTime) > 60.seconds) && (_pool.length > _initialConnections)) {
+				auto now = cast(DateTime)Clock.currTime;
+				if (now - _lastShrinkTime > 60.seconds && _pool.length > _initialConnections) {
 					foreach (ref conn; cast(Connection[])_pool) {
-						if ((conn is null) || conn.busy || ((now - conn.releaseTime) <= 120.seconds)) {
+						if (conn is null || conn.busy || now - conn.releaseTime <= 120.seconds)
 							continue;
-						}
 
 						collectException({ conn.close(); }());
 						conn = null;
 					}
 
-					if (_pool.any!((a) => (a is null))) {
-						_pool = _pool.remove!((a) => (a is null));
-					}
+					if (_pool.any!((a) => (a is null)))
+						_pool = _pool.remove!((a) => a is null);
 
 					_lastShrinkTime = now;
 				}
@@ -154,7 +145,6 @@ private:
 		}
 
 	private:
-
 		Connection createConnection() shared {
 			try {
 				static if (flags)
@@ -163,44 +153,36 @@ private:
 					auto conn = new Connection(_host, _user, _password, _database, _port);
 				conn.pooled = true;
 				return conn;
-			} catch (Exception e) {
+			} catch (Exception)
 				return null;
-			}
 		}
 
 		void createConnections(uint num) shared {
-			for (int i; i < num; i++) {
-				if ((_maxConnections > 0) && (_pool.length >= _maxConnections)) {
+			foreach (i; 0 .. num) {
+				if (_maxConnections > 0 && _pool.length >= _maxConnections)
 					break;
-				}
 
-				Connection conn = createConnection();
-
-				if (conn !is null) {
+				if (auto conn = createConnection())
 					_pool ~= cast(shared)conn;
-				}
 			}
 		}
 
 		void getConnection(shared RequestConnection req) shared {
-			immutable start = Clock.currTime();
+			immutable start = Clock.currTime;
 
 			while (true) {
-				Connection conn = getFreeConnection();
-
-				if (conn !is null) {
-					(cast(Tid)req.tid).send(cast(shared)conn);
+				if (auto conn = getFreeConnection()) {
+					(cast()req.tid).send(cast(shared)conn);
 					return;
 				}
 
-				if ((Clock.currTime() - start) >= _waitTime) {
+				if (Clock.currTime - start >= _waitTime)
 					break;
-				}
 
 				Thread.sleep(100.msecs);
 			}
 
-			(cast(Tid)req.tid).send(new immutable ConnectionBusy);
+			(cast()req.tid).send(new immutable ConnectionBusy);
 		}
 
 		Connection getFreeConnection() shared {
@@ -217,24 +199,20 @@ private:
 		Connection findFreeConnection() shared {
 			Connection result;
 
-			for (size_t i = 0; i < _pool.length; i++) {
-				Connection conn = cast(Connection)_pool[i];
-
-				if ((conn is null) || conn.busy) {
+			foreach (conn; _pool) {
+				if (conn is null || conn.busy)
 					continue;
-				}
 
-				if (!testConnection(conn)) {
+				if (!testConnection(cast()conn))
 					continue;
-				}
 
 				conn.busy = true;
-				result = conn;
+				result = cast()conn;
 				break;
 			}
 
-			if (_pool.any!((a) => (a is null))) {
-				_pool = _pool.remove!((a) => (a is null));
+			if (_pool.any!((a) => a is null)) {
+				_pool = _pool.remove!((a) => a is null);
 			}
 
 			return result;
@@ -244,7 +222,7 @@ private:
 			try {
 				conn.ping();
 				return true;
-			} catch (Exception e) {
+			} catch (Exception) {
 				collectException({ conn.close(); }());
 				conn = null;
 
@@ -279,45 +257,40 @@ private:
 
 private:
 
-shared class RequestConnection {
+template TID() {
 	Tid tid;
 
 	this(shared Tid tid) shared {
 		this.tid = tid;
 	}
+}
+
+shared class RequestConnection {
+	mixin TID;
 }
 
 immutable class ConnectionBusy {
 }
 
 shared class Terminate {
-	Tid tid;
-
-	this(shared Tid tid) shared {
-		this.tid = tid;
-	}
+	mixin TID;
 }
 
-// unittest
-// {
-//     import core.thread;
-//     import std.stdio;
+/+
+unittest {
+	import core.thread;
+	import std.stdio;
 
-//     ConnectionPool pool = ConnectionPool.getInstance("127.0.0.1", "root", "111111", "test", 3306);
-
-//     int i = 0;
-//     while (i++ < 20)
-//     {
-//         Thread.sleep(100.msecs);
-
-//         Connection conn = pool.getConnection();
-
-//         if (conn !is null)
-//         {
-//             writeln(conn.connected());
-//             pool.releaseConnection(conn);
-//         }
-//     }
-
-//     pool.destroy();
-// }
+	auto pool = ConnectionPool.getInstance("127.0.0.1", "root", "111111", "test", 3306);
+	int i;
+	while (i++ < 20) {
+		Thread.sleep(100.msecs);
+		Connection conn = pool.getConnection();
+		if (conn) {
+			writeln(conn.connected());
+			pool.releaseConnection(conn);
+		}
+	}
+	pool.destroy();
+}
++/
