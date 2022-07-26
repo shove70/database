@@ -140,6 +140,19 @@ enum Clause(string name, prevStates...) =
 	~ name ~ ") ~ expr;
 		return this;}";
 
+string placeholders(size_t x) {
+	import std.conv : to;
+
+	if (!x)
+		return "";
+
+	auto s = "$1";
+	foreach (i; 2 .. x + 1)
+		s ~= ",$" ~ i.to!string;
+	return s;
+}
+
+@safe:
 /** An instance of a query building process */
 struct SQLBuilder {
 	string sql;
@@ -211,7 +224,7 @@ public:
 				}
 			}
 		if (pkeys)
-			keys ~= "PRIMARY KEY(" ~ pkeys.quoteJoin(",") ~ ')';
+			keys ~= "PRIMARY KEY(" ~ pkeys.quoteJoin() ~ ')';
 
 		return SB(quote(SQLName!T) ~ '(' ~ join(fields ~ keys, ',') ~ ')'
 				~ s, State.createNX);
@@ -226,18 +239,14 @@ public:
 	alias insert(T) = insert!(OR.None, T);
 
 	static SB insert(OR or = OR.None, T)() if (isAggregateType!T) {
-		import std.array : replicate;
-
-		enum qms = ",?".replicate(ColumnCount!T);
-		return SQLBuilder(make!(or ~ "INTO " ~
-				quote(SQLName!T) ~ '(', ") VALUES(" ~
-				(qms.length ? qms[1 .. $] : qms) ~ ')', T), State.insert);
+		return SQLBuilder(make!(or ~ "INTO " ~ quote(SQLName!T) ~ '(',
+				") VALUES(" ~ placeholders(ColumnCount!T) ~ ')', T), State.insert);
 	}
 
 	///
 	unittest {
-		assert(SQLBuilder.insert!User == `INSERT INTO "User"("name","age") VALUES(?,?)`);
-		assert(SQLBuilder.insert!Message == `INSERT INTO "msg"("contents") VALUES(?)`);
+		assert(SQLBuilder.insert!User == `INSERT INTO "User"("name","age") VALUES($1,$2)`);
+		assert(SQLBuilder.insert!Message == `INSERT INTO "msg"("contents") VALUES($1)`);
 	}
 
 	///
@@ -263,7 +272,7 @@ public:
 			}
 		}
 		return SB("SELECT " ~ fields.join(',') ~ " FROM "
-				~ tables.quoteJoin(","), State.from);
+				~ tables.quoteJoin(), State.from);
 	}
 	///
 	unittest {
@@ -282,7 +291,7 @@ public:
 
 	///
 	SB from(TABLES...)() if (TABLES.length && allSatisfy!(isAggregateType, TABLES)) {
-		return from([staticMap!(SQLName, TABLES)].quoteJoin(","));
+		return from([staticMap!(SQLName, TABLES)].quoteJoin());
 	}
 
 	///
@@ -411,9 +420,9 @@ S quote(S)(S s, char q = '"') if (isSomeString!S) {
 		return q ~ s ~ q;
 }
 
-S quoteJoin(S, bool leaveTail = false)(S[] s, S sep = ",", char q = '"')
+S quoteJoin(S, bool leaveTail = false)(S[] s, char sep = ',', char q = '"')
 if (isSomeString!S) {
-	auto res = appender!(S);
+	auto res = appender!S;
 	for (size_t i; i < s.length; i++) {
 		version (NO_SQLQUOTE)
 			res ~= s[i];

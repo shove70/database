@@ -50,8 +50,7 @@ struct InputPacket
 
 	mixin InputPacketMethods!MySQLProtocolException;
 
-protected:
-
+private:
 	ubyte[]* buf;
 	ubyte[] in_;
 }
@@ -110,7 +109,7 @@ struct OutputPacket
 
 	void finalize(ubyte seq)
 	{
-		if (pos >=  0xffffff)
+		if (pos >= 0xffffff)
 			throw new MySQLConnectionException("Packet size exceeds 2^24");
 		uint length = cast(uint)pos;
 		uint header = cast(uint)((pos & 0xffffff) | (seq << 24));
@@ -137,10 +136,16 @@ struct OutputPacket
 		return (*buf)[0..4 + pos];
 	}
 
+	void fill(size_t size) @trusted {
+		static if (is(typeof(grow)))
+			grow(pos, size);
+		out_[pos .. pos + size] = 0;
+		pos += size;
+	}
+
 	mixin OutputPacketMethods;
 
-protected:
-
+private:
 	void grow(size_t offset, size_t size)
 	{
 		auto requested = 4 + offset + size;

@@ -518,13 +518,14 @@ class Connection
 
 	@property bool connected() const
 	{
-		return socket.connected;
+		return socket && socket.isAlive;
 	}
 
 	void close()
 	{
 		clearClientPreparedCache();
 		socket.close();
+		socket = null;
 	}
 
 	void reuse()
@@ -557,7 +558,7 @@ package(database):
 	bool pooled;
 	DateTime releaseTime;
 
-	@property bool busy()
+	@property bool busy() const
 	{
 		return busy_;
 	}
@@ -576,8 +577,7 @@ private:
 
 	void connect()
 	{
-		socket.connect(settings_.host, settings_.port);
-
+		socket = new Socket(settings_.host, settings_.port);
 		seq_ = 0;
 		eatHandshake(retrieve());
 		clearClientPreparedCache();
@@ -607,7 +607,7 @@ private:
 
 	void ensureConnected()
 	{
-		if (!socket.connected)
+		if (!connected)
 		{
 			connect();
 		}
@@ -763,7 +763,7 @@ private:
 		reply.put!uint(caps_);
 		reply.put!uint(1);
 		reply.put!ubyte(45);
-		reply.fill(0, 23);
+		reply.fill(23);
 
 		reply.put(settings_.user);
 		reply.put!ubyte(0);

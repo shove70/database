@@ -1,8 +1,10 @@
 module database.postgresql.protocol;
 
+import std.datetime;
+
 //dfmt off
 
-//https://www.postgresql.org/docs/10/static/protocol-message-formats.html
+//https://www.postgresql.org/docs/14/static/protocol-message-formats.html
 enum OutputMessageType : ubyte {
 	Bind			= 'B',
 	Close			= 'C',
@@ -17,7 +19,7 @@ enum OutputMessageType : ubyte {
 	PasswordMessage = 'p',
 	Query			= 'Q',
 	Sync			= 'S',
-	Terminate		= 'T'
+	Terminate		= 'X'
 }
 
 enum InputMessageType : ubyte {
@@ -47,16 +49,22 @@ enum InputMessageType : ubyte {
 }
 
 enum TransactionStatus : ubyte {
-	Idle				= 'I',
-	Inside				= 'T',
-	Error				= 'E',
+	Idle = 'I',
+	Inside = 'T',
+	Error = 'E',
 }
 
-enum FormatCode : ubyte {
-	Text	= 0,
-	Binary	= 1
+enum DescribeType : ubyte {
+	Statement = 'S',
+	Portal = 'P'
 }
 
+enum FormatCode : short {
+	Text,
+	Binary
+}
+
+// https://www.postgresql.org/docs/14/static/protocol-error-fields.html
 enum NoticeMessageField : ubyte {
 	SeverityLocal		= 'S',
 	Severity			= 'V',
@@ -91,7 +99,7 @@ enum PgType : uint {
 	INT4		= 23,
 	// REGPROC	= 24,
 	TEXT		= 25,
-	// OID		= 26,
+	OID			= 26,
 	// TID		= 27,
 	// XID		= 28,
 	// CID		= 29,
@@ -150,12 +158,17 @@ enum PgType : uint {
 	// REGTYPE		= 2206,
 	// REGROLE		= 4096,
 	// REGNAMESPACE	= 4089,
-
+	VOID		= 2278,
 	UUID		= 2950,
 	JSONB		= 3802
 }
 
 alias PgColumnTypes = PgType;
+
+enum PGEpochDate = Date(2000, 1, 1);
+enum PGEpochDay = PGEpochDate.dayOfGregorianCal;
+enum PGEpochTime = TimeOfDay(0, 0, 0);
+enum PGEpochDateTime = DateTime(2000, 1, 1, 0, 0, 0);
 
 auto columnTypeName(PgType type) {
 	import std.traits;
@@ -163,11 +176,20 @@ auto columnTypeName(PgType type) {
 	final switch (type) {
 		case PgType.DOUBLE: return "double precision";
 		case PgType.CHARA: return "char(n)";
-		static foreach(M; EnumMembers!PgType){
+		static foreach(M; EnumMembers!PgType) {
 			static if(M != PgType.DOUBLE && M != PgType.CHARA)
 				case M: return M.stringof;
 		}
 	}
+}
+
+struct Notification {
+	/// The process ID of the notifying backend process
+	int processId;
+	/// The name of the channel that the notify has been raised on
+	char[] channel;
+	/// The “payload” string passed from the notifying process
+	char[] payload;
 }
 
 struct Notice {
@@ -183,20 +205,54 @@ struct Notice {
 	}
 
 	Severity severity;
+	/// https://www.postgresql.org/docs/14/static/errcodes-appendix.html
+	char[5] code;
+	/// Primary human-readable error message. This should be accurate
+	/// but terse (typically one line). Always present.
+	string message;
+	/// Optional secondary error message carrying more detail about the
+	/// problem. Might run to multiple lines.
+	string detail;
+	/** Optional suggestion what to do about the problem. This is intended to
+	differ from Detail in that it offers advice (potentially inappropriate)
+	rather than hard facts. Might run to multiple lines. */
+	string hint;
+	/** Decimal ASCII integer, indicating an error cursor position as an index
+	into the original query string. The first character has index 1, and
+	positions are measured in characters not bytes. */
 	uint position;
-	string
-		message,
-		code,
-		hint,
-		detail,
-		where,
-		schema,
-		table,
-		column,
-		type,
-		constraint;
+	/** this is defined the same as the position field, but it is used when
+	the cursor position refers to an internally generated command rather than
+	the one submitted by the client. The q field will always appear when this
+	field appears.*/
+	string internalPos;
+	/// Text of a failed internally-generated command. This could be, for
+	/// example, a SQL query issued by a PL/pgSQL function.
+	string internalQuery;
+	/** Context in which the error occurred. Presently this includes a call
+	stack traceback of active procedural language functions and
+	internally-generated queries. The trace is one entry per line, most
+	recent first. */
+	string where;
+	string schema;
+	string table;
+	string column;
+	/// If the error was associated with a specific data type, the name of
+	/// the data type.
+	string type;
+	/** If the error was associated with a specific constraint, the name of the
+	constraint. Refer to fields listed above for the associated table or domain.
+	(For this purpose, indexes are treated as constraints, even if they weren't
+	created with constraint syntax.) */
+	string constraint;
+	/// File name of the source-code location where the error was reported.
+	string file;
+	/// Line number of the source-code location where the error was reported.
+	string line;
+	/// Name of the source-code routine reporting the error.
+	string routine;
 
-	string toString() const {
+	string toString() @safe const {
 		import std.array;
 
 		auto writer = appender!string;
