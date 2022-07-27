@@ -119,21 +119,6 @@ struct OutputPacket {
 		put(cast(int)(x - SysTime(PGEpochDateTime, UTC())).total!"usecs");
 	}
 
-	// BUG: Does not support months
-	void put(in Duration x) { // interval
-		int months = cast(int)(x.split!"weeks".weeks / 28);
-		int days = cast(int)x.split!"days".days;
-
-		put(x.total!"usecs" - convert!("days", "usecs")(days));
-		put(days);
-		put(months);
-	}
-
-	void writeTimeTz(in SysTime x) { // timetz
-		put(cast(TimeOfDay)x);
-		put(0);
-	}
-
 	ubyte[] data() {
 		finalize();
 		return (*buf)[0 .. implicit + pos];

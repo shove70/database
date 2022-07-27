@@ -145,7 +145,7 @@ class Connection {
 				cmd.put(cast(int)arg.length);
 				cmd.put(cast(ubyte[])arg);
 			} else {
-				cmd.put(cast(int)U.sizeof);
+				cmd.put(cast(int)arg.sizeof);
 				cmd.put(arg);
 			}
 		}
