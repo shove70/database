@@ -1,8 +1,7 @@
 module database.util;
 
 // dfmt off
-import core.stdc.errno,
-	core.time,
+import core.time,
 	std.exception,
 	std.socket,
 	std.string,
@@ -11,7 +10,7 @@ import core.stdc.errno,
 // dfmt on
 
 class DBException : Exception {
-	this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
+	this(string msg, string file = __FILE__, size_t line = __LINE__) pure @safe {
 		super(msg, file, line);
 	}
 }
@@ -88,55 +87,6 @@ template isReadableDataMember(alias M) {
 		enum isReadableDataMember = false;
 	else
 		enum isReadableDataMember = isVisible!M;
-}
-
-void appendValues(R, T)(ref R appender, T values)
-if (isArray!T && !isSomeString!(OriginalType!T)) {
-	foreach (i, value; values) {
-		appendValue(appender, value);
-		if (i != values.length - 1)
-			appender.put(',');
-	}
-}
-
-void appendValue(R, T)(ref R appender, T) if (is(Unqual!T : typeof(null))) {
-	appender.put("null");
-}
-
-void appendValue(R, T)(ref R appender, T value)
-if (isInstanceOf!(Nullable, T) || isInstanceOf!(NullableRef, T)) {
-	appendValue(appender, value.isNull ? null : value.get);
-}
-
-@property {
-	string placeholders(size_t x, bool parens = true) {
-		import std.array;
-
-		if (!x)
-			return null;
-		auto app = appender!string;
-		if (parens) {
-			app.reserve((x << 1) - 1);
-
-			app ~= '(';
-			foreach (i; 0 .. x - 1)
-				app ~= "?,";
-			app ~= '?';
-			app ~= ')';
-		} else {
-			app.reserve(x << 1 | 1);
-
-			foreach (i; 0 .. x - 1)
-				app ~= "?,";
-			app ~= '?';
-		}
-		return app[];
-	}
-
-	string placeholders(T)(T x, bool parens = true)
-	if (is(typeof(() { auto y = x.length; }))) {
-		return x.length.placeholders(parens);
-	}
 }
 
 private:
@@ -257,11 +207,29 @@ package(database):
 alias CutOut(size_t I, T...) = AliasSeq!(T[0 .. I], T[I + 1 .. $]);
 
 template getSQLFields(string prefix, string suffix, T) {
+	import std.conv : to;
 	import std.meta;
+
+	static string putPlaceholders(string[] s) {
+		string res;
+		for (size_t i; i < s.length;) {
+			version (NO_SQLQUOTE)
+				res ~= s[i];
+			else {
+				res ~= '"';
+				res ~= s[i];
+				res ~= '"';
+			}
+			++i;
+			if (i == s.length)
+				res ~= "=$" ~ i.to!string ~ ',';
+		}
+		return res[];
+	}
 
 	enum colNames = ColumnNames!T,
 		I = staticIndexOf!("rowid", colNames),
-		sql(S...) = prefix ~ [S].quoteJoin(suffix == "=?" ? "=?," : ",")
+		sql(S...) = prefix ~ (suffix == "=?" ? putPlaceholders([S]) : [S].quoteJoin())
 		~ suffix;
 	// Skips "rowid" field
 	static if (I >= 0)
@@ -355,16 +323,6 @@ template OutputPacketMethods() {
 		}
 	}
 
-	void reset() {
-		pos = 0;
-	}
-
-	void fill(ubyte x, size_t size) {
-		grow(pos, size);
-		out_[pos .. pos + size] = 0;
-		pos += size;
-	}
-
 	size_t length() const {
 		return pos;
 	}
@@ -399,32 +357,28 @@ align(1) union _l {
 	ulong n;
 }
 
-struct DBSocket(E : Exception) {
-	void connect(scope const(char)[] host, ushort port) {
-		socket = new TcpSocket(new InternetAddress(host, port));
-		socket.setOption(SocketOptionLevel.SOCKET, SocketOption.KEEPALIVE, true);
-		socket.setOption(SocketOptionLevel.TCP, SocketOption.TCP_NODELAY, true);
-		socket.setOption(SocketOptionLevel.SOCKET, SocketOption.SNDTIMEO, 30.seconds);
-		socket.setOption(SocketOptionLevel.SOCKET, SocketOption.RCVTIMEO, 30.seconds);
+class DBSocket(E : Exception) : TcpSocket {
+	import core.stdc.errno;
+
+@safe:
+	this(scope const(char)[] host, ushort port) {
+		super(new InternetAddress(host, port));
+		setOption(SocketOptionLevel.SOCKET, SocketOption.KEEPALIVE, true);
+		setOption(SocketOptionLevel.TCP, SocketOption.TCP_NODELAY, true);
+		setOption(SocketOptionLevel.SOCKET, SocketOption.SNDTIMEO, 30.seconds);
+		setOption(SocketOptionLevel.SOCKET, SocketOption.RCVTIMEO, 30.seconds);
 	}
 
-	@property bool connected() inout {
-		return socket && socket.isAlive;
-	}
-
-	void close() {
-		if (socket) {
-			socket.shutdown(SocketShutdown.BOTH);
-			socket.close();
-			socket = null;
-		}
+	override void close() {
+		shutdown(SocketShutdown.BOTH);
+		super.close();
 	}
 
 	void read(void[] buffer) {
 		long len = void;
 
-		for (size_t off; off < buffer.length; off += len) {
-			len = socket.receive(buffer[off .. $]);
+		for (size_t i; i < buffer.length; i += len) {
+			len = receive(buffer[i .. $]);
 
 			if (len > 0)
 				continue;
@@ -440,10 +394,10 @@ struct DBSocket(E : Exception) {
 	}
 
 	void write(in void[] buffer) {
-		long len;
+		long len = void;
 
-		for (size_t off; off < buffer.length; off += len) {
-			len = socket.send(buffer[off .. $]);
+		for (size_t i; i < buffer.length; i += len) {
+			len = send(buffer[i .. $]);
 
 			if (len > 0)
 				continue;
@@ -457,21 +411,19 @@ struct DBSocket(E : Exception) {
 				throw new E("Sent std.socket.Socket.ERROR: " ~ formatSocketError(errno));
 		}
 	}
-
-	private TcpSocket socket;
 }
 
 public:
-T parse(T)(string data) if (isIntegral!T) {
+T parse(T)(inout(char)[] data) if (isIntegral!T) {
 	return parse!T(data, 0);
 }
 
-T parse(T)(ref string data, size_t startIndex = 0) if (isIntegral!T)
+T parse(T)(ref inout(char)[] data, size_t startIndex = 0) if (isIntegral!T)
 in (startIndex <= data.length) {
 	T x;
 	auto i = startIndex;
 	for (; i < data.length; ++i) {
-		char c = data[i];
+		const c = data[i];
 		if (c < '0' || c > '9')
 			break;
 		x = x * 10 + (c ^ '0');

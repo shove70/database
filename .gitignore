@@ -6,6 +6,7 @@ dub.selections.json
 *.lib
 *.pdb
 *.exe
+*.dll
 
 **/libdatabase_mysql
 **/libdatabase_postgresql

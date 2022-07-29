@@ -1,11 +1,15 @@
 module database.postgresql.packet;
 
 import std.algorithm;
-import std.bitmanip;
+import std.datetime;
 import std.traits;
+import database.postgresql.protocol;
 import database.util;
-public import database.postgresql.exception;
 import core.stdc.string : strlen;
+
+package import database.postgresql.exception;
+
+@safe:
 
 struct InputPacket {
 	@disable this();
@@ -15,41 +19,54 @@ struct InputPacket {
 		in_ = buffer;
 	}
 
-	@property ubyte type() const { return typ; }
-
-	T peek(T)() if (!isArray!T) in(T.sizeof <= in_.length) {
-		return native(*cast(T*)in_.ptr);
+	@property auto type() const {
+		return typ;
 	}
 
-	T eat(T)() if (!isArray!T) in(T.sizeof <= in_.length) {
-		auto ptr = cast(T*)in_.ptr;
-		in_ = in_[T.sizeof..$];
-		return native(*ptr);
+	T peek(T)() const if (!is(T == struct) && !isArray!T)
+	in (T.sizeof <= in_.length) {
+		return native(cast(const T*)in_.ptr);
 	}
 
-	string peekz() {
-		return cast(string)in_[0..strlen(cast(char*)in_.ptr)];
+	T eat(T)() @trusted if (!is(T == struct) && !isArray!T)
+	in (T.sizeof <= in_.length) {
+		auto p = *cast(T*)in_.ptr;
+		in_ = in_[T.sizeof .. $];
+		return native(p);
 	}
 
-	string eatz() {
+	T eat(T : Date)() {
+		return PGEpochDate + dur!"days"(eat!int);
+	}
+
+	T eat(T : TimeOfDay)() {
+		return PGEpochTime + dur!"usecs"(eat!long);
+	}
+
+	T eat(T : DateTime)() { // timestamp
+		return PGEpochDateTime + dur!"usecs"(eat!long);
+	}
+
+	T eat(T : SysTime)() { // timestamptz
+		T x = T(PGEpochDateTime + dur!"usecs"(eat!long), UTC());
+		x.timezone = null;
+		return x;
+	}
+
+	auto eatz() @trusted {
 		auto len = strlen(cast(char*)in_.ptr);
-		auto result = cast(string)in_[0..len];
-		in_ = in_[len + 1..$];
+		auto result = cast(char[])in_[0 .. len];
+		in_ = in_[len + 1 .. $];
 		return result;
 	}
 
-	void skipz() {
-		auto len = strlen(cast(char*)in_.ptr);
-		in_ = in_[len + 1..$];
-	}
-
-	T eat(T)(size_t count) if (isArray!T) {
+	T eat(T)(size_t count) @trusted if (isDynamicArray!T) {
 		alias ValueType = typeof(T.init[0]);
 
 		assert(ValueType.sizeof * count <= in_.length);
 		auto ptr = cast(ValueType*)in_.ptr;
-		in_ = in_[ValueType.sizeof * count..$];
-		return ptr[0..count];
+		in_ = in_[ValueType.sizeof * count .. $];
+		return ptr[0 .. count];
 	}
 
 	mixin InputPacketMethods!PgSQLProtocolException;
@@ -62,44 +79,67 @@ private:
 struct OutputPacket {
 	@disable this();
 
-	this(ubyte[]* buffer) {
-		buf = buffer;
+	this(ref ubyte[] buffer) @trusted {
+		buf = &buffer;
 		implicit = 4;
-		out_ = buf.ptr + 4;
+		out_ = &buffer[4];
 	}
 
-	this(ubyte type, ubyte[]* buffer) {
-		buf = buffer;
+	this(ubyte type, ref ubyte[] buffer) @trusted {
+		buf = &buffer;
 		implicit = 5;
-		if (buf.length < implicit)
-			buf.length = implicit;
-		*buf.ptr = type;
-		out_ = buf.ptr + implicit;
+		if (buf.length < 5)
+			buf.length = 5;
+		buffer[0] = type;
+		out_ = &buffer[5];
 	}
 
-	void putz(string x) {
-		put(x);
+	void put(in char[] x) {
+		put(pos, cast(const ubyte[])x);
 		put!ubyte(0);
 	}
 
-	void put(T)(T x) {
+	void put(T)(T x) if (!is(T == struct) && !is(T : const char[])) {
 		put(pos, x);
 	}
 
-	pragma(inline, true) void put(T)(size_t offset, T x) if (!isArray!T) {
-		grow(offset, T.sizeof);
+	void put(Date x) {
+		put(cast(int)(x.dayOfGregorianCal - PGEpochDay));
+	}
 
+	void put(in TimeOfDay x) {
+		put(cast(int)(x - PGEpochTime).total!"usecs");
+	}
+
+	void put(in DateTime x) { // timestamp
+		put(cast(int)(x - PGEpochDateTime).total!"usecs");
+	}
+
+	void put(in SysTime x) { // timestamptz
+		put(cast(int)(x - SysTime(PGEpochDateTime, UTC())).total!"usecs");
+	}
+
+	ubyte[] data() {
+		finalize();
+		return (*buf)[0 .. implicit + pos];
+	}
+
+	mixin OutputPacketMethods;
+
+private:
+	pragma(inline, true) void put(T)(size_t offset, T x) @trusted if (!isArray!T)
+	out (; pos <= buf.length) {
+		grow(offset, T.sizeof);
 		*cast(T*)(out_ + offset) = native(x);
 		pos = max(offset + T.sizeof, pos);
 	}
 
-	void put(T)(size_t offset, T x) if (isArray!T) {
+	void put(T)(size_t offset, T x) @trusted if (isArray!T) {
 		alias ValueType = Unqual!(typeof(T.init[0]));
 
 		grow(offset, ValueType.sizeof * x.length);
-
 		static if (ValueType.sizeof == 1)
-			(cast(ValueType*)(out_ + offset))[0..x.length] = x;
+			(cast(ValueType*)(out_ + offset))[0 .. x.length] = x;
 		else {
 			auto pout = cast(ValueType*)(out_ + offset);
 			foreach (ref y; x)
@@ -108,26 +148,7 @@ struct OutputPacket {
 		pos = max(offset + ValueType.sizeof * x.length, pos);
 	}
 
-	void finalize() {
-		if (pos + implicit > int.max)
-			throw new PgSQLConnectionException("Packet size exceeds 2^31");
-		uint p = cast(uint)pos + 4;
-		*cast(uint*)(buf.ptr + implicit - 4) = native(p);
-	}
-
-	void reserve(size_t size) {
-		(*buf).length = max((*buf).length, implicit + size);
-		out_ = buf.ptr + implicit;
-	}
-
-	const(ubyte)[] data() const {
-		return (*buf)[0..implicit + pos];
-	}
-
-	mixin OutputPacketMethods;
-
-private:
-	void grow(size_t offset, size_t size) {
+	void grow(size_t offset, size_t size) @trusted {
 		auto requested = implicit + offset + size;
 		if (requested > buf.length) {
 			auto capacity = max(128, (*buf).capacity);
@@ -138,17 +159,18 @@ private:
 		}
 	}
 
-	ubyte[]* buf;
+	void finalize() @trusted {
+		if (pos + implicit > int.max)
+			throw new PgSQLConnectionException("Packet size exceeds 2^31");
+		*cast(uint*)(buf.ptr + implicit - 4) = native(cast(uint)pos + 4);
+	}
 
+	ubyte[]* buf;
 	ubyte* out_;
 	size_t pos, implicit;
 }
 
-T native(T)(ref T x) {
-	return native!T(&x);
-}
-
-T native(T)(const T* ptr) if (isScalarType!T) {
+T native(T)(in T x) @trusted if (isScalarType!(OriginalType!T)) {
 	import core.bitop;
 
 	version (LittleEndian)
@@ -157,11 +179,11 @@ T native(T)(const T* ptr) if (isScalarType!T) {
 		enum LE = false;
 	static if (T.sizeof > 1 && LE)
 		static if (T.sizeof == 2)
-			return byteswap(*ptr);
+			return cast(T)byteswap(x);
 		else static if (T.sizeof == 4)
-			return bswap(*cast(uint*)ptr);
+			return cast(T)bswap(*cast(const uint*)&x);
 		else
-			return bswap(*cast(ulong*)ptr);
+			return cast(T)bswap(*cast(const ulong*)&x);
 	else
-		return *ptr;
+		return x;
 }

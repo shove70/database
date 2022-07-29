@@ -22,7 +22,7 @@ struct Row(Value, Header, E : Exception, alias hashOf, alias Mixin) {
 
 	ref auto opIndex(size_t index) { return values[index]; }
 
-	const(Value)* opBinaryRight(string op : "in")(string key) const {
+	const(Value)* opBinaryRight(string op : "in")(string key) pure const {
 		if (auto index = find(hashOf(key), key))
 			return &values[index - 1];
 		return null;
@@ -53,7 +53,7 @@ struct Row(Value, Header, E : Exception, alias hashOf, alias Mixin) {
 		app.formattedWrite("%s", values);
 	}
 
-	string toString() const {
+	string toString() @trusted const {
 		import std.conv : to;
 
 		return values.to!string;
@@ -65,9 +65,9 @@ struct Row(Value, Header, E : Exception, alias hashOf, alias Mixin) {
 		if (start > values.length) start = values.length;
 
 		string[] result;
-		result.reserve(end - start);
-		foreach(i; start..end)
-			result ~= values[i].toString;
+		result.length = end - start;
+		foreach (i, ref s; result)
+			s = values[i].toString;
 		return result;
 	}
 
@@ -142,12 +142,11 @@ package(database):
 		}
 	}
 
-	ref auto get_(size_t index) { return values[index]; } // TODO
+	auto ref get_(size_t index) { return values[index]; } // TODO
 
 	mixin Mixin;
 
 private:
-
 	Header _header;
 	uint[] index_;
 }

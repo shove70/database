@@ -17,19 +17,20 @@ struct QueryResult(T = PgSQLRow) {
 	Connection connection;
 	alias connection this;
 	PgSQLRow row;
-	PgSQLHeader cols;
 	@disable this();
 
-	this(Connection conn) {
+@safe:
+	this(Connection conn, FormatCode format = FormatCode.Text) {
 		connection = conn;
-		auto packet = retrieve();
-		if (packet.isStatus && eatStatuses(packet) == InputMessageType.ReadyForQuery) {
+		auto packet = eatStatuses(InputMessageType.RowDescription);
+		if (packet.type == InputMessageType.ReadyForQuery) {
 			row.values.length = 0;
 			return;
 		}
 		auto columns = packet.eat!ushort;
-		cols = PgSQLHeader(columns, packet);
-		row.header = cols;
+		row.header = PgSQLHeader(columns, packet);
+		foreach (ref col; row.header)
+			col.format = format;
 		popFront();
 	}
 
@@ -37,31 +38,31 @@ struct QueryResult(T = PgSQLRow) {
 		clear();
 	}
 
-	@property pure @safe nothrow @nogc {
+	@property pure nothrow @nogc {
 		bool empty() const {
 			return row.values.length == 0;
 		}
 
-		const(PgSQLHeader) header() const {
-			return cols;
+		PgSQLHeader header() {
+			return row.header;
+		}
+
+		T opCast(T : bool)() const {
+			return !empty;
 		}
 	}
 
 	void popFront() {
-		auto packet = retrieve();
-		if (packet.isStatus && eatStatuses(packet) == InputMessageType.ReadyForQuery) {
+		auto packet = eatStatuses(InputMessageType.DataRow);
+		if (packet.type == InputMessageType.ReadyForQuery) {
 			row.values.length = 0;
 			return;
 		}
-		assert(row.header.length == cols.length);
-		assert(packet.type == InputMessageType.DataRow);
 		const rowlen = packet.eat!ushort;
-
-		foreach (i, ref column; cols)
-			if (i < rowlen) {
-				assert(column.format == FormatCode.Text);
-				eatValueText(packet, column, row[i]);
-			} else
+		foreach (i, ref column; row.header)
+			if (i < rowlen)
+				eatValue(packet, column, row[i]);
+			else
 				row[i] = PgSQLValue(null);
 		assert(packet.empty);
 	}
@@ -88,40 +89,75 @@ struct QueryResult(T = PgSQLRow) {
 	}
 
 	void clear() {
-		if (empty)
-			return;
-		for (;;) {
-			auto packet = retrieve();
-			if (packet.isStatus) {
-				eatStatuses(packet);
-				row.values.length = 0;
-				break;
-			}
+		if (!empty) {
+			eatStatuses();
+			row.values.length = 0;
 		}
-	}
-
-	void toString(R)(ref R app) const {
-		row.toString(app);
-	}
-
-	string toString() const {
-		return row.toString;
 	}
 }
 
-private alias SB = SQLBuilder;
+@safe private:
+alias SB = SQLBuilder;
 
-private void eatValueText(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue value) {
+void eatValue(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue value) {
 	import std.array;
 	import std.conv : to;
+	import std.datetime;
+	static import std.uuid;
 
 	auto length = packet.eat!uint;
 	if (length == uint.max) {
 		value = PgSQLValue(null);
 		return;
 	}
+	if (column.format == FormatCode.Binary) {
+		switch (column.type) with (PgType) {
+		case BOOL:
+			value = PgSQLValue(packet.eat!bool);
+			return;
+		case CHAR:
+			value = PgSQLValue(packet.eat!char);
+			return;
+		case INT2:
+			value = PgSQLValue(packet.eat!short);
+			return;
+		case INT4:
+			value = PgSQLValue(packet.eat!int);
+			return;
+		case INT8:
+			value = PgSQLValue(packet.eat!long);
+			return;
+		case REAL:
+			value = PgSQLValue(packet.eat!float);
+			return;
+		case DOUBLE:
+			value = PgSQLValue(packet.eat!double);
+			return;
+		case VARCHAR, CHARA:
+		case TEXT, NAME:
+			value = PgSQLValue(column.type, packet.eat!(char[])(length).idup);
+			return;
+		case BYTEA:
+			value = PgSQLValue(packet.eat!(ubyte[])(length).dup);
+			return;
+		case DATE:
+			value = PgSQLValue(packet.eat!Date);
+			break;
+		case TIME:
+			value = PgSQLValue(packet.eat!TimeOfDay);
+			break;
+		case TIMESTAMP:
+			value = PgSQLValue(packet.eat!DateTime);
+			break;
+		case TIMESTAMPTZ:
+			value = PgSQLValue(packet.eat!SysTime);
+			break;
+		default:
+			throw new PgSQLErrorException("Unsupported type " ~ column.type.columnTypeName);
+		}
+	}
 	auto svalue = packet.eat!string(length);
-	switch(column.type) with (PgType) {
+	switch (column.type) with (PgType) {
 	case UNKNOWN, NULL:
 		value = PgSQLValue(null);
 		break;
@@ -162,7 +198,7 @@ private void eatValueText(ref InputPacket packet, in PgSQLColumn column, ref PgS
 		auto data = uninitializedArray!(ubyte[])(svalue.length >> 1);
 		foreach (i; 0 .. data.length)
 			data[i] = cast(ubyte)(hexDecode(svalue[i << 1]) << 4 | hexDecode(svalue[i << 1 | 1]));
-		value = PgSQLValue(column.type, data);
+		value = PgSQLValue(data);
 		break;
 	case DATE:
 		value = PgSQLValue(parseDate(svalue));
@@ -174,37 +210,25 @@ private void eatValueText(ref InputPacket packet, in PgSQLColumn column, ref PgS
 		value = PgSQLValue(parsePgSQLTimestamp(svalue));
 		break;
 	default:
+		throw new PgSQLErrorException("Unsupported type " ~ column.type.columnTypeName);
 	}
 }
 
-private uint hexDecode(char c) @safe @nogc pure nothrow {
+uint hexDecode(char c) @nogc pure nothrow {
 	return c + 9 * (c >> 6) & 15;
 }
 
-package bool isStatus(in InputPacket packet) {
-	switch (packet.type) with (InputMessageType) {
-	case ErrorResponse, NoticeResponse, ReadyForQuery:
-	case NotificationResponse, CommandComplete:
-		return true;
-	default:
-		return false;
-	}
-}
-
+public:
 bool create(T)(PgSQLDB db) {
-	db.query(SB.create!T);
+	db.exec(SB.create!T);
 	return true;
 }
 
-long insert(OR or = OR.None, T)(PgSQLDB db, T s) if (isAggregateType!T) {
-	import std.array : replicate;
-
-	enum qms = ",?".replicate(ColumnCount!T);
+ulong insert(OR or = OR.None, T)(PgSQLDB db, T s) if (isAggregateType!T) {
 	mixin getSQLFields!(or ~ "INTO " ~ quote(SQLName!T) ~ '(',
-		") VALUES(" ~ (qms.length ? qms[1 .. $] : qms) ~ ')', T);
+		")VALUES(" ~ placeholders(ColumnCount!T) ~ ')', T);
 
-	db.query(SB(sql!colNames, State.insert), s.tupleof);
-	return db.affected;
+	return db.exec(SB(sql!colNames, State.insert), s.tupleof);
 }
 
 auto selectAllWhere(T, string expr, ARGS...)(PgSQLDB db, ARGS args) if (expr.length) {
@@ -221,16 +245,15 @@ T selectOneWhere(T, string expr, ARGS...)(PgSQLDB db, ARGS args) if (expr.length
 T selectOneWhere(T, string expr, T defValue, ARGS...)(PgSQLDB db, ARGS args)
 if (expr.length) {
 	auto q = db.query(SB.selectAllFrom!T.where(expr), args);
-	return q.empty ? q.get!T : defValue;
+	return q ? q.get!T : defValue;
 }
 
 bool hasTable(PgSQLDB db, string table) {
-	return !db.query("select 1 from pg_class where relname = ?", table).empty;
+	return !db.query("select 1 from pg_class where relname = $1", table).empty;
 }
 
 long delWhere(T, string expr, ARGS...)(PgSQLDB db, ARGS args) if (expr.length) {
-	db.query(SB.del!T.where(expr), args);
-	return db.affected;
+	return db.exec(SB.del!T.where(expr), args);
 }
 
 unittest {
@@ -246,7 +269,7 @@ unittest {
 	}
 
 	scope db = new PgSQLDB("127.0.0.1", "postgres", "postgres", "postgres");
-	db.exec(`CREATE TABLE IF NOT EXISTS company(
+	db.runSql(`CREATE TABLE IF NOT EXISTS company(
 	ID INT PRIMARY KEY	NOT NULL,
 	NAME		TEXT	NOT NULL,
 	AGE			INT		NOT NULL,
@@ -260,12 +283,12 @@ unittest {
 	db.insert(PlaceOwner(1, 1, "foo", ""));
 	db.insert(PlaceOwner(2, 1, "bar", ""));
 	db.insert(PlaceOwner(3, 3, "baz", ""));
-	auto s = db.selectOneWhere!(PlaceOwner, "owner_name=?")("bar");
+	auto s = db.selectOneWhere!(PlaceOwner, "owner_name=$1")("bar");
 	assert(s.placeID == 2);
 	assert(s.ownerName == "bar");
-	foreach (row; db.selectAllWhere!(PlaceOwner, "location_id=?")(1))
+	foreach (row; db.selectAllWhere!(PlaceOwner, "location_id=$1")(1))
 		writeln(row);
-	assert(db.exec("drop table place_owner"));
-	assert(db.exec("drop table company"));
+	db.exec("drop table place_owner");
+	db.exec("drop table company");
 	db.close();
 }

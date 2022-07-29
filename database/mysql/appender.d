@@ -2,8 +2,26 @@ module database.mysql.appender;
 
 import std.datetime;
 import std.traits;
+import std.typecons;
 import database.mysql.type;
-public import database.util : appendValue, appendValues;
+
+void appendValues(R, T)(ref R appender, T values)
+if (isArray!T && !isSomeString!(OriginalType!T)) {
+	foreach (i, value; values) {
+		appendValue(appender, value);
+		if (i != values.length - 1)
+			appender.put(',');
+	}
+}
+
+void appendValue(R, T)(ref R appender, T) if (is(Unqual!T : typeof(null))) {
+	appender.put("null");
+}
+
+void appendValue(R, T)(ref R appender, T value)
+if (isInstanceOf!(Nullable, T) || isInstanceOf!(NullableRef, T)) {
+	appendValue(appender, value.isNull ? null : value.get);
+}
 
 void appendValue(R, T)(ref R appender, T value) if (isScalarType!T) {
 	import std.conv : to;

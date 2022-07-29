@@ -200,13 +200,13 @@ private:
 			Connection result;
 
 			foreach (conn; _pool) {
-				if (conn is null || conn.busy)
+				if (conn is null || (cast()conn).busy)
 					continue;
 
 				if (!testConnection(cast()conn))
 					continue;
 
-				conn.busy = true;
+				(cast()conn).busy = true;
 				result = cast()conn;
 				break;
 			}
