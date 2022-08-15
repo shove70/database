@@ -13,10 +13,10 @@ import database.postgresql.db,
 	std.format,
 	std.string,
 	std.traits;
+// dfmt on
 import std.regex : ctRegex, matchFirst;
 import std.uni : sicmp;
 import std.utf : decode, UseReplacementDchar;
-// dfmt on
 
 alias Socket = DBSocket!PgSQLConnectionException;
 
@@ -530,7 +530,7 @@ private:
 			eatNotification(packet); break;
 		case CommandComplete:
 			eatCommandComplete(packet); break;
-		case EmptyQueryResponse, NoData, ParameterDescription, ParseComplete, PortalSuspended:
+		case EmptyQueryResponse, NoData, ParameterDescription, ParseComplete, BindComplete, PortalSuspended:
 			break;
 		default:
 			throw new PgSQLProtocolException("Unexpected message: %s".format(type));
