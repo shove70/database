@@ -155,6 +155,7 @@ void eatValue(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue valu
 		default:
 			throw new PgSQLErrorException("Unsupported type " ~ column.type.columnTypeName);
 		}
+		return;
 	}
 	auto svalue = packet.eat!string(length);
 	switch (column.type) with (PgType) {

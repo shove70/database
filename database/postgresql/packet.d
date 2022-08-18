@@ -1,10 +1,12 @@
 module database.postgresql.packet;
 
-import std.algorithm;
-import std.datetime;
-import std.traits;
-import database.postgresql.protocol;
-import database.util;
+// dfmt off
+import database.postgresql.protocol,
+	database.util,
+	std.algorithm,
+	std.datetime,
+	std.traits;
+// dfmt on
 import core.stdc.string : strlen;
 
 package import database.postgresql.exception;
