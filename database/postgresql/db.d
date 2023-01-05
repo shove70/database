@@ -62,8 +62,8 @@ struct QueryResult(T = PgSQLRow) {
 		foreach (i, ref column; row.header)
 			if (i < rowlen)
 				eatValue(packet, column, row[i]);
-			else
-				row[i] = PgSQLValue(null);
+		else
+			row[i] = PgSQLValue(null);
 		assert(packet.empty);
 	}
 
@@ -221,7 +221,8 @@ uint hexDecode(char c) @nogc pure nothrow {
 
 public:
 bool create(T)(PgSQLDB db) {
-	db.exec(SB.create!T);
+	enum sql = SB.create!T;
+	db.exec(sql);
 	return true;
 }
 
@@ -229,7 +230,8 @@ ulong insert(OR or = OR.None, T)(PgSQLDB db, T s) if (isAggregateType!T) {
 	mixin getSQLFields!(or ~ "INTO " ~ quote(SQLName!T) ~ '(',
 		")VALUES(" ~ placeholders(ColumnCount!T) ~ ')', T);
 
-	return db.exec(SB(sql!colNames, State.insert), s.tupleof);
+	enum sql = SB(sql!colNames, State.insert);
+	return db.exec(sql, s.tupleof);
 }
 
 auto selectAllWhere(T, string expr, ARGS...)(PgSQLDB db, ARGS args) if (expr.length) {
@@ -254,7 +256,8 @@ bool hasTable(PgSQLDB db, string table) {
 }
 
 long delWhere(T, string expr, ARGS...)(PgSQLDB db, ARGS args) if (expr.length) {
-	return db.exec(SB.del!T.where(expr), args);
+	enum sql = SB.del!T.where(expr);
+	return db.exec(sql, args);
 }
 
 unittest {

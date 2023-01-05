@@ -33,14 +33,15 @@ unittest {
 	assert(SQLName!Message == "msg");
 }
 
-/// Generate a column name given a FIELD in T.
-template ColumnName(T, string FIELD) if (isAggregateType!T) {
-	enum ColumnName = SQLName!(__traits(getMember, T, FIELD), FIELD);
+/// Generate a column name given a field in T.
+template ColumnName(T, string field) if (isAggregateType!T) {
+	enum ColumnName = SQLName!(__traits(getMember, T, field), field);
 }
 
 /// Return the qualifed column name of the given struct field
-enum ColumnName(alias FIELD) =
-	quote(SQLName!(__traits(parent, FIELD))) ~ '.' ~ quote(SQLName!FIELD);
+enum ColumnName(alias field, bool brackets = false) =
+	quote(SQLName!(__traits(parent, field))) ~ (brackets ?
+			'(' ~ quote(SQLName!field) ~ ')' : '.' ~ quote(SQLName!field));
 
 ///
 unittest {
@@ -51,6 +52,7 @@ unittest {
 	assert(ColumnName!(User, "age") == "age");
 	assert(ColumnName!(Message.contents) == `"msg"."txt"`);
 	assert(ColumnName!(User.age) == `"User"."age"`);
+	assert(ColumnName!(User.age, true) == `"User"("age")`);
 }
 
 template ColumnNames(T) {
@@ -199,26 +201,26 @@ public:
 						constraints;
 					}
 					static foreach (A; __traits(getAttributes, T.tupleof[I]))
-						static if (is(typeof(A) == sqlkey)) {
-							static if (A.key.length)
-								keys ~= "FOREIGN KEY(" ~ colName ~ ") REFERENCES " ~ A.key;
-							else
-								pkeys ~= colName;
-						} else static if (colName != "rowid" && is(typeof(A) == sqltype))
-							type = A.type;
-						else static if (is(typeof(A)))
-							static if (isSomeString!(typeof(A)))
-								static if (A.length) {
-									static if (A.startsWithWhite)
-										constraints ~= A;
-									else
-										constraints ~= ' ' ~ A;
-								}
+					static if (is(typeof(A) == sqlkey)) {
+						static if (A.key.length)
+							keys ~= "FOREIGN KEY(" ~ quote(colName) ~ ") REFERENCES " ~ A.key;
+						else
+							pkeys ~= colName;
+					} else static if (colName != "rowid" && is(typeof(A) == sqltype))
+						type = A.type;
+					else static if (is(typeof(A)))
+						static if (isSomeString!(typeof(A)))
+							static if (A.length) {
+								static if (A.startsWithWhite)
+									constraints ~= A;
+								else
+									constraints ~= ' ' ~ A;
+							}
 					static if (colName != "rowid") {
 						field ~= type ~ constraints;
 						enum MEMBER = T.init.tupleof[I];
 						if (MEMBER != FIELDS[I].init)
-							field ~= " default " ~ quote(MEMBER.to!string, '\'');
+						field ~= " default " ~ quote(MEMBER.to!string, '\'');
 						fields ~= field;
 					}
 				}
@@ -401,13 +403,13 @@ unittest {
 	// Make sure all these generate the same sql statement
 	auto sql = [
 		Q.select!(`"msg"."rowid"`, `"msg"."contents"`).from(`"msg"`)
-		.where(`"msg"."rowid"=?`).sql,
+			.where(`"msg"."rowid"=?`).sql,
 		Q.select!(`"msg"."rowid"`, `"msg"."contents"`)
-		.from!Message
-		.where(C!(Message.id) ~ "=?").sql,
+			.from!Message
+			.where(C!(Message.id) ~ "=?").sql,
 		Q.select!(C!(Message.id), C!(Message.contents))
-		.from!Message
-		.where(`"msg"."rowid"=?`).sql,
+			.from!Message
+			.where(`"msg"."rowid"=?`).sql,
 		Q.selectAllFrom!Message.where(`"msg"."rowid"=?`).sql
 	];
 	assert(count(uniq(sql)) == 1);
