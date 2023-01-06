@@ -4,6 +4,7 @@ import std.conv : to;
 
 // dfmt off
 import
+	std.datetime,
 	std.exception,
 	std.meta,
 	std.string,
@@ -112,6 +113,11 @@ alias RCExSql = RefCounted!(ExpandedSql, RefCountedAutoInitialize.no);
 	}
 }
 
+enum EpochDateTime = DateTime(2000, 1, 1, 0, 0, 0);
+
+private enum canConvertToInt(T) = isIntegral!T ||
+	is(Unqual!T == Date) || is(Unqual!T == DateTime) || is(Unqual!T == Duration);
+
 /// Represents a sqlite3 statement
 struct Statement {
 	int lastCode;
@@ -146,11 +152,17 @@ private:
 		return sqlite3_bind_double(stmt, pos, arg);
 	}
 
-	int bindArg(T)(int pos, T arg) if (isIntegral!T) {
-		static if (T.sizeof > 4)
-			return sqlite3_bind_int64(stmt, pos, arg);
+	int bindArg(T)(int pos, T x) if (canConvertToInt!T) {
+		static if (is(Unqual!T == Date))
+			return sqlite3_bind_int(stmt, pos, x.dayOfGregorianCal);
+		else static if (is(Unqual!T == DateTime))
+			return sqlite3_bind_int64(stmt, pos, (x - EpochDateTime).total!"usecs");
+		else static if (is(Unqual!T == Duration))
+			return sqlite3_bind_int64(stmt, pos, x.total!"usecs");
+		else static if (T.sizeof > 4)
+			return sqlite3_bind_int64(stmt, pos, x);
 		else
-			return sqlite3_bind_int(stmt, pos, arg);
+			return sqlite3_bind_int(stmt, pos, x);
 	}
 
 	int bindArg(int pos, void[] arg) {
@@ -167,9 +179,15 @@ private:
 	T getArg(T)(int pos)
 	in (stmt) {
 		int typ = sqlite3_column_type(stmt, pos);
-		static if (isIntegral!T) {
+		static if (canConvertToInt!T) {
 			enforce!SQLEx(typ == SQLITE_INTEGER, "Column is not an integer");
-			static if (T.sizeof > 4)
+			static if (is(Unqual!T == Date))
+				return Date(sqlite3_column_int(stmt, pos));
+			else static if (is(Unqual!T == DateTime))
+				return EpochDateTime + dur!"usecs"(sqlite3_column_int64(stmt, pos));
+			else static if (is(Unqual!T == Duration))
+				return dur!"usecs"(sqlite3_column_int64(stmt, pos));
+			else static if (T.sizeof > 4)
 				return sqlite3_column_int64(stmt, pos);
 			else
 				return cast(T)sqlite3_column_int(stmt, pos);

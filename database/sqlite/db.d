@@ -132,11 +132,31 @@ unittest {
 	// Test quoting by using keyword as table and column name
 	mixin TEST;
 	struct Group {
-		int Group;
+		int group;
 	}
 
 	Group a = {3};
 	db.insert(a);
-	Group b = db.selectOneWhere!(Group, `"Group"=3`);
-	assert(a.Group == b.Group);
+	Group b = db.selectOneWhere!(Group, `"group"=3`);
+	assert(a.group == b.group);
+}
+
+unittest {
+	import std.datetime;
+
+	mixin TEST;
+
+	struct S {
+		int id;
+		Date date;
+		DateTime dt;
+		Duration d;
+	}
+
+	S s = {
+		1, Date(2022, 2, 22), DateTime(2022, 2, 22, 22, 22, 22), dur!"msecs"(666)
+	};
+	db.insert(s);
+	S t = db.selectOneWhere!(S, `id=1`);
+	assert(t == s);
 }

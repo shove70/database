@@ -106,7 +106,7 @@ struct OutputPacket {
 	}
 
 	void put(Date x) {
-		put(cast(int)(x.dayOfGregorianCal - PGEpochDay));
+		put(x.dayOfGregorianCal - PGEpochDay);
 	}
 
 	void put(in TimeOfDay x) {

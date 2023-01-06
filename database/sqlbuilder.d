@@ -89,19 +89,24 @@ template SQLTypeOf(T) {
 		enum SQLTypeOf = "BOOLEAN";
 	else static if (!isSomeString!T && !isScalarType!T) {
 		version (USE_PGSQL) {
-			static if (is(Unqual!T == Date))
+			alias U = Unqual!T;
+			static if (is(U == Date))
 				enum SQLTypeOf = "date";
-			else static if (is(Unqual!T == DateTime))
+			else static if (is(U == DateTime))
 				enum SQLTypeOf = "timestamp";
-			else static if (is(Unqual!T == SysTime))
+			else static if (is(U == SysTime))
 				enum SQLTypeOf = "timestamp with time zone";
-			else static if (is(Unqual!T == TimeOfDay))
+			else static if (is(U == TimeOfDay))
 				enum SQLTypeOf = "time";
-			else static if (is(Unqual!T == Duration))
+			else static if (is(U == Duration))
 				enum SQLTypeOf = "interval";
 			else
 				enum SQLTypeOf = "bytea";
-		} else
+		} else static if (is(U == Date))
+			enum SQLTypeOf = "INT";
+		else static if (is(U == DateTime) || is(U == Duration))
+			enum SQLTypeOf = "BIGINT";
+		else
 			enum SQLTypeOf = "BLOB";
 	} else
 		static assert(0, "Unsupported SQLType '" ~ T.stringof ~ '.');
