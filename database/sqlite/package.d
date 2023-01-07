@@ -28,7 +28,7 @@ version (Windows) {
 }
 
 class SQLiteException : DBException {
-	this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
+	this(string msg, string file = __FILE__, size_t line = __LINE__) pure @safe {
 		super(msg, file, line);
 	}
 }
@@ -58,7 +58,7 @@ package {
 	}
 }
 
-template Manager(alias ptr, alias freeptr) {
+private template Manager(alias ptr, alias freeptr) {
 	mixin("alias ", __traits(identifier, ptr), " this;");
 	~this() {
 		free();

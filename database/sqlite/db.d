@@ -138,7 +138,7 @@ unittest {
 	Group a = {3};
 	db.insert(a);
 	Group b = db.selectOneWhere!(Group, `"group"=3`);
-	assert(a.group == b.group);
+	assert(a == b);
 }
 
 unittest {
@@ -153,10 +153,10 @@ unittest {
 		Duration d;
 	}
 
-	S s = {
+	S a = {
 		1, Date(2022, 2, 22), DateTime(2022, 2, 22, 22, 22, 22), dur!"msecs"(666)
 	};
-	db.insert(s);
-	S t = db.selectOneWhere!(S, `id=1`);
-	assert(t == s);
+	db.insert(a);
+	S b = db.selectOneWhere!(S, `id=1`);
+	assert(a == b);
 }
