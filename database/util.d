@@ -2,6 +2,7 @@ module database.util;
 
 // dfmt off
 import core.time,
+	database.sqlbuilder,
 	std.exception,
 	std.socket,
 	std.string,
@@ -53,11 +54,14 @@ struct sqltype { // @suppress(dscanner.style.phobos_naming_convention)
 	string type;
 }
 
+/// foreign key
+enum foreign(alias field) = sqlkey(ColumnName!(field, true));
+
 enum isVisible(alias M) = __traits(getVisibility, M).length == 6; //public or export
 
 private enum fitsInString(T) =
 	!isAssociativeArray!T && (!isArray!T || is(typeof(T.init[0]) == ubyte) ||
-			is(T == string));
+	is(T == string));
 
 template isWritableDataMember(alias M) {
 	alias TM = typeof(M);
@@ -258,7 +262,7 @@ template InputPacketMethods(E : Exception) {
 	auto countUntil(ubyte x, bool expect) {
 		auto index = in_.countUntil(x);
 		if (expect && (index < 0 || in_[index] != x))
-			throw new E("Bad packet format");
+		throw new E("Bad packet format");
 		return index;
 	}
 	// dfmt off
