@@ -373,7 +373,7 @@ class DBSocket(E : Exception) : TcpSocket {
 		setOption(SocketOptionLevel.SOCKET, SocketOption.RCVTIMEO, 30.seconds);
 	}
 
-	override void close() {
+	override void close() scope {
 		shutdown(SocketShutdown.BOTH);
 		super.close();
 	}
