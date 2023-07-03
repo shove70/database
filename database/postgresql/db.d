@@ -11,7 +11,68 @@ import
 // dfmt on
 public import database.sqlbuilder;
 
-alias PgSQLDB = Connection;
+@safe:
+
+struct PgSQLDB {
+	Connection conn;
+	alias conn this;
+
+	this(Settings settings) {
+		conn = new Connection(settings);
+	}
+
+	this(string host, string user, string pwd, string db, ushort port = 5432) {
+		conn = new Connection(host, user, pwd, db, port);
+	}
+
+	bool create(T)() {
+		enum sql = SB.create!T;
+		exec(sql);
+		return true;
+	}
+
+	ulong insert(OR or = OR.None, T)(T s) if (isAggregateType!T) {
+		mixin getSQLFields!(or ~ "INTO " ~ quote(SQLName!T) ~ '(',
+			")VALUES(" ~ placeholders(ColumnCount!T) ~ ')', T);
+
+		enum sql = SB(sql!colNames, State.insert);
+		return exec(sql, s.tupleof);
+	}
+
+	ulong replaceInto(T)(T s) {
+		return insert!(OR.Replace, T)(s);
+	}
+
+	auto selectAllWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
+		return this.query!T(SB.selectAllFrom!T.where(expr), args);
+	}
+
+	T selectOneWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
+		auto q = query(SB.selectAllFrom!T.where(expr), args);
+		if (q.empty)
+			throw new PgSQLException("No match");
+		return q.get!T;
+	}
+
+	T selectOneWhere(T, string expr, T defValue, Args...)(auto ref Args args) if (expr.length) {
+		auto q = query(SB.selectAllFrom!T.where(expr), args);
+		return q ? q.get!T : defValue;
+	}
+
+	bool hasTable(string table) {
+		return !query("select 1 from pg_class where relname = $1", table).empty;
+	}
+
+	bool hasTable(T)() if (isAggregateType!T) {
+		enum sql = "select 1 from pg_class where relname = " ~ quote(SQLName!T);
+		return !query(sql).empty;
+	}
+
+	long delWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
+		enum sql = SB.del!T.where(expr);
+		return exec(sql, args);
+	}
+}
 
 struct QueryResult(T = PgSQLRow) {
 	Connection connection;
@@ -19,7 +80,6 @@ struct QueryResult(T = PgSQLRow) {
 	PgSQLRow row;
 	@disable this();
 
-@safe:
 	this(Connection conn, FormatCode format = FormatCode.Text) {
 		connection = conn;
 		auto packet = eatStatuses(InputMessageType.RowDescription);
@@ -62,8 +122,8 @@ struct QueryResult(T = PgSQLRow) {
 		foreach (i, ref column; row.header)
 			if (i < rowlen)
 				eatValue(packet, column, row[i]);
-		else
-			row[i] = PgSQLValue(null);
+			else
+				row[i] = PgSQLValue(null);
 		assert(packet.empty);
 	}
 
@@ -96,7 +156,7 @@ struct QueryResult(T = PgSQLRow) {
 	}
 }
 
-@safe private:
+private:
 alias SB = SQLBuilder;
 
 void eatValue(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue value) {
@@ -219,48 +279,7 @@ uint hexDecode(char c) @nogc pure nothrow {
 	return c + 9 * (c >> 6) & 15;
 }
 
-public:
-bool create(T)(PgSQLDB db) {
-	enum sql = SB.create!T;
-	db.exec(sql);
-	return true;
-}
-
-ulong insert(OR or = OR.None, T)(PgSQLDB db, T s) if (isAggregateType!T) {
-	mixin getSQLFields!(or ~ "INTO " ~ quote(SQLName!T) ~ '(',
-		")VALUES(" ~ placeholders(ColumnCount!T) ~ ')', T);
-
-	enum sql = SB(sql!colNames, State.insert);
-	return db.exec(sql, s.tupleof);
-}
-
-auto selectAllWhere(T, string expr, ARGS...)(PgSQLDB db, ARGS args) if (expr.length) {
-	return db.query!T(SB.selectAllFrom!T.where(expr), args);
-}
-
-T selectOneWhere(T, string expr, ARGS...)(PgSQLDB db, ARGS args) if (expr.length) {
-	auto q = db.query(SB.selectAllFrom!T.where(expr), args);
-	if (q.empty)
-		throw new PgSQLException("No match");
-	return q.get!T;
-}
-
-T selectOneWhere(T, string expr, T defValue, ARGS...)(PgSQLDB db, ARGS args)
-if (expr.length) {
-	auto q = db.query(SB.selectAllFrom!T.where(expr), args);
-	return q ? q.get!T : defValue;
-}
-
-bool hasTable(PgSQLDB db, string table) {
-	return !db.query("select 1 from pg_class where relname = $1", table).empty;
-}
-
-long delWhere(T, string expr, ARGS...)(PgSQLDB db, ARGS args) if (expr.length) {
-	enum sql = SB.del!T.where(expr);
-	return db.exec(sql, args);
-}
-
-unittest {
+public unittest {
 	import database.util;
 	import std.stdio;
 

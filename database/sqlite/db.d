@@ -65,18 +65,18 @@ class SQLite3DB : SQLite3 {
 		return q.lastCode == SQLITE_DONE;
 	}
 
-	auto selectAllWhere(T, string expr, ARGS...)(ARGS args) if (expr.length) {
+	auto selectAllWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
 		return QueryResult!T(query(SB.selectAllFrom!T.where(expr), args));
 	}
 
-	T selectOneWhere(T, string expr, ARGS...)(ARGS args) if (expr.length) {
+	T selectOneWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
 		if (q.step())
 			return q.get!T;
 		throw new SQLEx("No match");
 	}
 
-	T selectOneWhere(T, string expr, T defValue, ARGS...)(ARGS args) if (expr.length) {
+	T selectOneWhere(T, string expr, T defValue, Args...)(auto ref Args args) if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
 		return q.step() ? q.get!T : defValue;
 	}
@@ -113,7 +113,7 @@ class SQLite3DB : SQLite3 {
 		return db.changes;
 	}
 
-	int delWhere(T, string expr, ARGS...)(ARGS args) if (expr.length) {
+	int delWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
 		query(SB.del!T.where(expr), args).step();
 		return db.changes;
 	}
