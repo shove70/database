@@ -29,8 +29,8 @@ public import database.util : SQLName = KeyName;
 
 ///
 unittest {
-	assert(SQLName!User == "User");
-	assert(SQLName!Message == "msg");
+	static assert(SQLName!User == "User");
+	static assert(SQLName!Message == "msg");
 }
 
 /// Generate a column name given a field in T.
@@ -49,10 +49,10 @@ unittest {
 		@as("txt") string contents;
 	}
 
-	assert(ColumnName!(User, "age") == "age");
-	assert(ColumnName!(Message.contents) == `"msg"."txt"`);
-	assert(ColumnName!(User.age) == `"User"."age"`);
-	assert(ColumnName!(User.age, true) == `"User"("age")`);
+	static assert(ColumnName!(User, "age") == "age");
+	static assert(ColumnName!(Message.contents) == `"msg"."txt"`);
+	static assert(ColumnName!(User.age) == `"User"."age"`);
+	static assert(ColumnName!(User.age, true) == `"User"("age")`);
 }
 
 template ColumnNames(T) {
@@ -147,7 +147,9 @@ enum Clause(string name, prevStates...) =
 	~ name ~ ") ~ expr;
 		return this;}";
 
-string placeholders(size_t x) {
+@safe:
+
+string placeholders(size_t x) pure nothrow {
 	import std.conv : to;
 
 	if (!x)
@@ -159,7 +161,6 @@ string placeholders(size_t x) {
 	return s;
 }
 
-@safe:
 /** An instance of a query building process */
 struct SQLBuilder {
 	string sql;

@@ -126,7 +126,7 @@ struct Statement {
 	mixin Manager!(stmt, sqlite3_finalize);
 
 	/// Construct a query from the string 'sql' into database 'db'
-	this(ARGS...)(sqlite3* db, string sql, ARGS args)
+	this(Args...)(sqlite3* db, string sql, auto ref Args args)
 	in (db)
 	in (sql.length) {
 		lastCode = -1;
@@ -215,7 +215,7 @@ private:
 
 public:
 	/// Bind these args in order to '?' marks in statement
-	void set(ARGS...)(ARGS args) {
+	void set(Args...)(auto ref Args args) {
 		static foreach (a; args)
 			db.checkError("Bind failed: ", bindArg(++argIndex, a));
 	}
@@ -349,7 +349,7 @@ class SQLite3 {
 	}
 
 	/// Execute an sql statement directly, binding the args to it
-	bool exec(ARGS...)(string sql, ARGS args) {
+	bool exec(Args...)(string sql, auto ref Args args) {
 		auto q = query(sql, args);
 		q.step();
 		return q.lastCode == SQLITE_DONE || q.lastCode == SQLITE_ROW;
@@ -392,7 +392,7 @@ class SQLite3 {
 	}
 
 	/// Create query from string and args to bind
-	auto query(ARGS...)(string sql, ARGS args) {
+	auto query(Args...)(string sql, auto ref Args args) {
 		return Query(db, sql, args);
 	}
 
