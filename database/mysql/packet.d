@@ -5,47 +5,41 @@ import std.traits;
 import database.mysql.exception;
 import database.util;
 
-struct InputPacket
-{
+struct InputPacket {
 	@disable this();
 
-	this(ubyte[]* buffer)
-	{
+	this(ubyte[]* buffer) {
 		buf = buffer;
 		in_ = *buf;
 	}
 
-	T peek(T)() if (!isArray!T)
-	{
+	T peek(T)() if (!isArray!T) {
 		assert(T.sizeof <= in_.length);
 		return *(cast(T*)in_.ptr);
 	}
 
-	T eat(T)() if (!isArray!T)
-	{
+	T eat(T)() if (!isArray!T) {
 		assert(T.sizeof <= in_.length);
 		auto ptr = cast(T*)in_.ptr;
-		in_ = in_[T.sizeof..$];
+		in_ = in_[T.sizeof .. $];
 		return *ptr;
 	}
 
-	T peek(T)(size_t count) if (isArray!T)
-	{
+	T peek(T)(size_t count) if (isArray!T) {
 		alias ValueType = typeof(Type.init[0]);
 
 		assert(ValueType.sizeof * count <= in_.length);
 		auto ptr = cast(ValueType*)in_.ptr;
-		return ptr[0..count];
+		return ptr[0 .. count];
 	}
 
-	T eat(T)(size_t count) if (isArray!T)
-	{
+	T eat(T)(size_t count) if (isArray!T) {
 		alias ValueType = typeof(T.init[0]);
 
 		assert(ValueType.sizeof * count <= in_.length);
 		auto ptr = cast(ValueType*)in_.ptr;
-		in_ = in_[ValueType.sizeof * count..$];
-		return ptr[0..count];
+		in_ = in_[ValueType.sizeof * count .. $];
+		return ptr[0 .. count];
 	}
 
 	mixin InputPacketMethods!MySQLProtocolException;
@@ -55,41 +49,35 @@ private:
 	ubyte[] in_;
 }
 
-struct OutputPacket
-{
+struct OutputPacket {
 	@disable this();
 
-	this(ubyte[]* buffer)
-	{
+	this(ubyte[]* buffer) {
 		buf = buffer;
 		out_ = buf.ptr + 4;
 	}
 
-	pragma(inline, true) void put(T)(T x)
-	{
+	pragma(inline, true) void put(T)(T x) {
 		put(pos, x);
 	}
 
-	void put(T)(size_t offset, T x) if (!isArray!T)
-	{
+	void put(T)(size_t offset, T x) if (!isArray!T) {
 		grow(offset, T.sizeof);
 
 		*(cast(T*)(out_ + offset)) = x;
 		pos = max(offset + T.sizeof, pos);
 	}
 
-	void put(T)(size_t offset, T x) if (isArray!T)
-	{
+	void put(T)(size_t offset, T x) if (isArray!T) {
 		alias ValueType = Unqual!(typeof(T.init[0]));
 
 		grow(offset, ValueType.sizeof * x.length);
 
-		(cast(ValueType*)(out_ + offset))[0..x.length] = x;
+		(cast(ValueType*)(out_ + offset))[0 .. x.length] = x;
 		pos = max(offset + (ValueType.sizeof * x.length), pos);
 	}
 
-	size_t marker(T)() if (!isArray!T)
-	{
+	size_t marker(T)() if (!isArray!T) {
 		grow(pos, T.sizeof);
 
 		auto place = pos;
@@ -97,8 +85,7 @@ struct OutputPacket
 		return place;
 	}
 
-	size_t marker(T)() if (isArray!T)
-	{
+	size_t marker(T)() if (isArray!T) {
 		alias ValueType = Unqual!(typeof(T.init[0]));
 		grow(pos, ValueType.sizeof * x.length);
 
@@ -107,8 +94,7 @@ struct OutputPacket
 		return place;
 	}
 
-	void finalize(ubyte seq)
-	{
+	void finalize(ubyte seq) {
 		if (pos >= 0xffffff)
 			throw new MySQLConnectionException("Packet size exceeds 2^24");
 		uint length = cast(uint)pos;
@@ -116,8 +102,7 @@ struct OutputPacket
 		*(cast(uint*)buf.ptr) = header;
 	}
 
-	void finalize(ubyte seq, size_t extra)
-	{
+	void finalize(ubyte seq, size_t extra) {
 		if (pos + extra >= 0xffffff)
 			throw new MySQLConnectionException("Packet size exceeds 2^24");
 		uint length = cast(uint)(pos + extra);
@@ -125,16 +110,13 @@ struct OutputPacket
 		*(cast(uint*)buf.ptr) = header;
 	}
 
-	void reserve(size_t size)
-	{
+	void reserve(size_t size) {
 		(*buf).length = max((*buf).length, 4 + size);
 		out_ = buf.ptr + 4;
 	}
 
 	const(ubyte)[] get() const
-	{
-		return (*buf)[0..4 + pos];
-	}
+		=> (*buf)[0 .. 4 + pos];
 
 	void fill(size_t size) @trusted {
 		static if (is(typeof(grow)))
@@ -146,15 +128,12 @@ struct OutputPacket
 	mixin OutputPacketMethods;
 
 private:
-	void grow(size_t offset, size_t size)
-	{
+	void grow(size_t offset, size_t size) {
 		auto requested = 4 + offset + size;
 
-		if (requested > buf.length)
-		{
+		if (requested > buf.length) {
 			auto capacity = max(128, (*buf).capacity);
-			while (capacity < requested)
-			{
+			while (capacity < requested) {
 				capacity <<= 1;
 			}
 

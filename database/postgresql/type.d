@@ -206,9 +206,7 @@ struct PgSQLValue {
 		return isNull == other.isNull;
 	}
 
-	T get(T)(lazy T def) const {
-		return !isNull ? get!T : def;
-	}
+	T get(T)(lazy T def) const => !isNull ? get!T : def;
 
 	T get(T)() @trusted const if (isScalarType!T && !is(T == enum)) {
 		switch(type_) with (PgType) {
@@ -272,9 +270,8 @@ struct PgSQLValue {
 		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
 
-	T get(T)() const if (is(Unqual!T == enum)) {
-		return cast(T)get!(OriginalType!T);
-	}
+	T get(T)() const if (is(Unqual!T == enum))
+	=> cast(T)get!(OriginalType!T);
 
 	T get(T)() const @trusted if (isArray!T && !is(T == enum)) {
 		switch(type_) with (PgType) {
@@ -295,13 +292,9 @@ struct PgSQLValue {
 		throw new PgSQLErrorException("Cannot convert %s to array".format(type_.columnTypeName));
 	}
 
-	T peek(T)(lazy T def) const {
-		return !isNull ? peek!T : def;
-	}
+	T peek(T)(lazy T def) const => !isNull ? peek!T : def;
 
-	T peek(T)() const if (is(T == struct) || isStaticArray!T) {
-		return get!T;
-	}
+	T peek(T)() const if (is(T == struct) || isStaticArray!T) => get!T;
 
 	T peek(T)() @trusted const if (is(T == U[], U)) {
 		switch(type_) with (PgType) {
@@ -318,17 +311,16 @@ struct PgSQLValue {
 		throw new PgSQLErrorException("Cannot convert %s to array".format(type_.columnTypeName));
 	}
 
-	size_t toHash() const @nogc @trusted pure nothrow {
-		return *cast(size_t*)&p ^ (type_ << 24);
-	}
+	size_t toHash() const @nogc @trusted pure nothrow
+	=> *cast(size_t*)&p ^ (type_ << 24);
 
 	@property nothrow @nogc {
 
-		bool isNull() const { return type_ == PgType.NULL; }
+		bool isNull() const => type_ == PgType.NULL;
 
-		bool isUnknown() const { return type_ == PgType.UNKNOWN; }
+		bool isUnknown() const => type_ == PgType.UNKNOWN;
 
-		PgType type() const { return type_; }
+		PgType type() const => type_;
 
 		bool isString() const {
 			switch(type_) with (PgType) {
@@ -356,21 +348,13 @@ struct PgSQLValue {
 			return false;
 		}
 
-		bool isFloat() const {
-			return type_ == PgType.REAL || type_ == PgType.DOUBLE;
-		}
+		bool isFloat() const => type_ == PgType.REAL || type_ == PgType.DOUBLE;
 
-		bool isTime() const {
-			return type_ == PgType.TIME || type_ == PgType.TIMETZ;
-		}
+		bool isTime() const => type_ == PgType.TIME || type_ == PgType.TIMETZ;
 
-		bool isDate() const {
-			return type_ == PgType.DATE;
-		}
+		bool isDate() const => type_ == PgType.DATE;
 
-		bool isTimestamp() const {
-			return type_ == PgType.TIMESTAMP || type_ == PgType.TIMESTAMPTZ;
-		}
+		bool isTimestamp() const => type_ == PgType.TIMESTAMP || type_ == PgType.TIMESTAMPTZ;
 	}
 	// dfmt on
 
@@ -491,11 +475,9 @@ struct PgSQLTime {
 		this.hoffset = hoffset;
 	}
 
-	@property uint usec() const {
-		return _usec & 0xFFFFFF;
-	}
+	@property uint usec() const => _usec & 0xFFFFFF;
 
-	@property uint usec(const uint usec)
+	@property uint usec(uint usec)
 	in (usec <= 0xFFFFFF) {
 		_usec = usec | moffset << 24;
 		return usec;
@@ -506,17 +488,12 @@ struct PgSQLTime {
 	invariant (0 <= hour + hoffset && hour + hoffset < 24);
 	invariant (0 <= minute + moffset && minute + moffset < 60);
 
-	Duration toDuration() const {
-		return usecs((hour + hoffset) * 3600_000_000L +
-				(
-					minute + moffset) * 60_000_000L +
-				second * 1_000_000L +
-				usec);
-	}
+	Duration toDuration() const => usecs((hour + hoffset) * 3600_000_000L + (
+			minute + moffset) * 60_000_000L +
+			second * 1_000_000L +
+			usec);
 
-	TimeOfDay toTimeOfDay() const {
-		return TimeOfDay(hour + hoffset, minute + moffset, second);
-	}
+	TimeOfDay toTimeOfDay() const => TimeOfDay(hour + hoffset, minute + moffset, second);
 
 	void toString(W)(ref W w) const {
 		w.formattedWrite("%02d:%02d:%02d", hour, minute, second);
@@ -558,13 +535,9 @@ struct PgSQLTimestamp {
 		return SysTime(datetime, time.usec.usecs);
 	}
 
-	TimeOfDay toTimeOfDay() const {
-		return time.toTimeOfDay();
-	}
+	TimeOfDay toTimeOfDay() const => time.toTimeOfDay();
 
-	DateTime toDateTime() const {
-		return DateTime(date, time.toTimeOfDay());
-	}
+	DateTime toDateTime() const => DateTime(date, time.toTimeOfDay());
 
 	void toString(R)(ref R app) const {
 		app.formattedWrite("%04d-%02d-%02d ", date.year, date.month, date.day);

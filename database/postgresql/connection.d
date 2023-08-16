@@ -44,7 +44,7 @@ private struct ServerInfo {
 		timeZone;
 
 	uint processId,
-		 cancellationKey;
+	cancellationKey;
 }
 
 @safe:
@@ -67,11 +67,11 @@ class Connection {
 	}
 
 	@property {
-		auto settings() const { return settings_; }
+		auto settings() const => settings_;
 
-		auto notices() const { return notices_; }
+		auto notices() const => notices_;
 
-		auto notifications() const { return notifications_; }
+		auto notifications() const => notifications_;
 	}
 
 	auto runSql(T = PgSQLRow)(in char[] sql) {
@@ -104,7 +104,8 @@ class Connection {
 		return affected;
 	}
 
-	void prepare(Args...)(in char[] statement, in char[] query) if (Args.length <= short.max) {
+	void prepare(Args...)(in char[] statement, in char[] query)
+	if (Args.length <= short.max) {
 		ensureConnected();
 
 		out_.length = 4 +
@@ -121,7 +122,8 @@ class Connection {
 		socket.write(cmd.data);
 	}
 
-	void bind(Args...)(in char[] portal, in char[] statement, auto ref Args args) @trusted if (Args.length <= short.max) {
+	void bind(Args...)(in char[] portal, in char[] statement, auto ref Args args) @trusted
+	if (Args.length <= short.max) {
 		out_.length = 4 +
 			portal.length + 1 +
 			statement.length + 1 +
@@ -197,8 +199,9 @@ class Connection {
 
 	bool begin() {
 		if (inTransaction)
-			throw new PgSQLErrorException("PgSQL doesn't support nested transactions" ~
-				"- commit or rollback before starting a new transaction");
+			throw new PgSQLErrorException(
+				"PgSQL doesn't support nested transactions" ~
+					"- commit or rollback before starting a new transaction");
 
 		query("begin");
 		return inTransaction;
@@ -223,19 +226,19 @@ class Connection {
 	alias OnDisconnectCallback = void delegate();
 
 	@property {
-		bool inTransaction() const {
-			return connected && status_.transaction == TransactionStatus.Inside;
-		}
+		bool inTransaction() const => connected && status_.transaction == TransactionStatus.Inside;
 
-		ulong insertID() const nothrow @nogc { return status_.insertID; }
+		ulong insertID() const nothrow @nogc => status_.insertID;
 
-		ulong affected() const nothrow @nogc { return status_.affected; }
+		ulong affected() const nothrow @nogc => status_.affected;
 
-		bool connected() const { return socket && socket.isAlive; }
+		bool ready() const nothrow @nogc => status_.ready;
+
+		bool connected() const => socket && socket.isAlive;
 	}
 
 	void close(bool sendTerminate = true) nothrow {
-		scope(exit) {
+		scope (exit) {
 			socket.close();
 			socket = null;
 		}
@@ -243,7 +246,8 @@ class Connection {
 		if (sendTerminate)
 			try
 				socket.write(terminateMsg);
-			catch(Exception){}
+			catch (Exception) {
+			}
 	}
 
 	void reuse() {
@@ -304,7 +308,8 @@ private:
 	}
 
 	InputPacket retrieve(ubyte control) @trusted {
-		scope(failure) disconnect();
+		scope (failure)
+			disconnect();
 
 		uint[1] header = void;
 		socket.read(header);
@@ -320,7 +325,8 @@ private:
 	}
 
 	package InputPacket retrieve() @trusted {
-		scope(failure) disconnect();
+		scope (failure)
+			disconnect();
 
 		ubyte[5] header = void;
 		socket.read(header);
@@ -346,14 +352,16 @@ private:
 			packet = retrieve();
 			if (packet.type == type)
 				break;
-		} while (eatStatus(packet, syncOnError) != InputMessageType.ReadyForQuery);
+		}
+		while (eatStatus(packet, syncOnError) != InputMessageType.ReadyForQuery);
 		return packet;
 	}
 
 	bool eatAuth(InputPacket packet) {
 		import std.algorithm : max;
 
-		scope(failure) disconnect();
+		scope (failure)
+			disconnect();
 
 		auto type = cast(InputMessageType)packet.type;
 		switch (type) with (InputMessageType) {
@@ -371,11 +379,13 @@ private:
 			case 3:
 				reply.put(settings_.pwd);
 				break;
-			version (NoMD5Auth) {} else {
-				case 5:
+				version (NoMD5Auth) {
+				} else {
+			case 5:
 					static char[32] MD5toHex(T...)(in T data) {
 						import std.ascii : LetterCase;
 						import std.digest.md : md5Of, toHexString;
+
 						return md5Of(data).toHexString!(LetterCase.lower);
 					}
 
@@ -383,8 +393,8 @@ private:
 					reply.put("md5".representation);
 					reply.put(MD5toHex(MD5toHex(settings_.pwd, settings_.user), salt));
 					break;
-			}
-			/+case 6: // SCM
+				}
+				/+case 6: // SCM
 			case 7: // GSS
 			case 8:
 			case 9:
@@ -392,7 +402,8 @@ private:
 			case 11:
 			case 12:+/
 			default:
-				throw new PgSQLProtocolException("Unsupported authentication method: %s".format(auth));
+				throw new PgSQLProtocolException(
+					"Unsupported authentication method: %s".format(auth));
 			}
 
 			socket.write(reply.data);
@@ -411,11 +422,12 @@ private:
 	}
 
 	void eatParameterStatus(ref InputPacket packet)
-	in(packet.type == InputMessageType.ParameterStatus)
-	out(; packet.empty) {
+	in (packet.type == InputMessageType.ParameterStatus)
+	out (; packet.empty) {
 		auto name = packet.eatz();
 		auto value = packet.eatz();
 		//info("parameter ", name, " = ", value);
+		// dfmt off
 		switch (hashOf(name)) {
 		case hashOf("server_version"): server.versionStr = value.dup; break;
 		case hashOf("server_encoding"): server.encoding = value.dup; break;
@@ -423,18 +435,21 @@ private:
 		case hashOf("TimeZone"): server.timeZone = value.dup; break;
 		default:
 		}
+		// dfmt on
 	}
 
 	void eatBackendKeyData(InputPacket packet)
-	in(packet.type == InputMessageType.BackendKeyData) {
+	in (packet.type == InputMessageType.BackendKeyData) {
 		server.processId = packet.eat!uint;
 		server.cancellationKey = packet.eat!uint;
 	}
 
 	void eatNoticeResponse(ref InputPacket packet)
-	in(packet.type == InputMessageType.NoticeResponse || packet.type == InputMessageType.ErrorResponse) {
+	in (packet.type == InputMessageType.NoticeResponse || packet.type == InputMessageType
+		.ErrorResponse) {
 		Notice notice;
 		auto field = packet.eat!ubyte;
+		// dfmt off
 		while (field) {
 			auto value = packet.eatz();
 			switch (field) with (NoticeMessageField) {
@@ -472,17 +487,17 @@ private:
 			}
 			field = packet.eat!ubyte;
 		}
-
+		// dfmt on
 		notices_ ~= notice;
 	}
 
 	void eatNotification(ref InputPacket packet)
-	in(packet.type == InputMessageType.NotificationResponse) {
+	in (packet.type == InputMessageType.NotificationResponse) {
 		notifications_ ~= Notification(packet.eat!int, packet.eatz(), packet.eatz());
 	}
 
 	void eatCommandComplete(ref InputPacket packet)
-	in(packet.type == InputMessageType.CommandComplete) {
+	in (packet.type == InputMessageType.CommandComplete) {
 		auto tag = packet.eatz();
 		auto p = tag.indexOf(' ') + 1;
 		auto cmd = tag[0 .. p];
@@ -513,23 +528,27 @@ private:
 		auto type = cast(InputMessageType)packet.type;
 		switch (type) with (InputMessageType) {
 		case ParameterStatus:
-			eatParameterStatus(packet); break;
+			eatParameterStatus(packet);
+			break;
 		case ReadyForQuery:
 			notices_.length = 0;
 			status_.transaction = packet.eat!TransactionStatus;
 			status_.ready = true;
 			break;
 		case NoticeResponse:
-			eatNoticeResponse(packet); break;
+			eatNoticeResponse(packet);
+			break;
 		case ErrorResponse:
 			if (syncOnError)
 				sync();
 			eatNoticeResponse(packet);
 			throwErr();
 		case NotificationResponse:
-			eatNotification(packet); break;
+			eatNotification(packet);
+			break;
 		case CommandComplete:
-			eatCommandComplete(packet); break;
+			eatCommandComplete(packet);
+			break;
 		case EmptyQueryResponse, NoData, ParameterDescription, ParseComplete, BindComplete, PortalSuspended:
 			break;
 		default:
@@ -539,12 +558,11 @@ private:
 	}
 
 	noreturn throwErr() {
-		foreach (ref notice; notices_)
-			switch (notice.severity) with (Notice.Severity) {
-			case PANIC, ERROR, FATAL:
-				throw new PgSQLErrorException(notice.message);
-			default:
-			}
+		foreach (ref notice; notices_) switch (notice.severity) with (Notice.Severity) {
+		case PANIC, ERROR, FATAL:
+			throw new PgSQLErrorException(notice.message);
+		default:
+		}
 
 		throw new PgSQLErrorException(notices_.front.message);
 	}

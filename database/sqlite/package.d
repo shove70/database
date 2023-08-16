@@ -38,9 +38,9 @@ version (unittest) package template TEST(string dbname = "", T = SQLite3) {
 	T db = () {
 		static if (dbname.length) {
 			tryRemove(dbname ~ ".db");
-			return new T(dbname ~ ".db");
+			return T(dbname ~ ".db");
 		} else
-			return new T(":memory:");
+			return T(":memory:");
 	}();
 }
 
@@ -60,6 +60,7 @@ package {
 
 private template Manager(alias ptr, alias freeptr) {
 	mixin("alias ", __traits(identifier, ptr), " this;");
+
 	~this() {
 		free();
 	}
@@ -78,39 +79,25 @@ struct ExpandedSql {
 alias RCExSql = RefCounted!(ExpandedSql, RefCountedAutoInitialize.no);
 
 @property {
-	auto errmsg(sqlite3* db) {
-		return sqlite3_errmsg(db).toStr;
-	}
+	auto errmsg(sqlite3* db) => sqlite3_errmsg(db).toStr;
 
 	int changes(sqlite3* db)
-	in (db) {
-		return sqlite3_changes(db);
-	}
+	in (db) => sqlite3_changes(db);
 	/// Return the 'rowid' produced by the last insert statement
 	long lastRowid(sqlite3* db)
-	in (db) {
-		return sqlite3_last_insert_rowid(db);
-	}
+	in (db) => sqlite3_last_insert_rowid(db);
 
 	void lastRowid(sqlite3* db, long rowid)
-	in (db) {
-		sqlite3_set_last_insert_rowid(db, rowid);
-	}
+	in (db) => sqlite3_set_last_insert_rowid(db, rowid);
 
 	int totalChanges(sqlite3* db)
-	in (db) {
-		return sqlite3_total_changes(db);
-	}
+	in (db) => sqlite3_total_changes(db);
 
 	string sql(sqlite3_stmt* stmt)
-	in (stmt) {
-		return sqlite3_sql(stmt).toStr;
-	}
+	in (stmt) => sqlite3_sql(stmt).toStr;
 
 	RCExSql expandedSql(sqlite3_stmt* stmt)
-	in (stmt) {
-		return RCExSql(ExpandedSql(sqlite3_expanded_sql(stmt)));
-	}
+	in (stmt) => RCExSql(ExpandedSql(sqlite3_expanded_sql(stmt)));
 }
 
 enum EpochDateTime = DateTime(2000, 1, 1, 0, 0, 0);
@@ -148,9 +135,8 @@ private:
 			return sqlite3_bind_text(stmt, pos, arg.ptr, cast(int)arg.length, null);
 	}
 
-	int bindArg(int pos, double arg) {
-		return sqlite3_bind_double(stmt, pos, arg);
-	}
+	int bindArg(int pos, double arg)
+		=> sqlite3_bind_double(stmt, pos, arg);
 
 	int bindArg(T)(int pos, T x) if (canConvertToInt!T) {
 		static if (is(Unqual!T == Date))
@@ -172,9 +158,8 @@ private:
 			return sqlite3_bind_blob(stmt, pos, arg.ptr, cast(int)arg.length, null);
 	}
 
-	int bindArg(T)(int pos, T) if (is(Unqual!T : typeof(null))) {
-		return sqlite3_bind_null(stmt, pos);
-	}
+	int bindArg(T)(int pos, T) if (is(Unqual!T : typeof(null)))
+		=> sqlite3_bind_null(stmt, pos);
 
 	T getArg(T)(int pos)
 	in (stmt) {
@@ -221,9 +206,7 @@ public:
 	}
 
 	int clear()
-	in (stmt) {
-		return sqlite3_clear_bindings(stmt);
-	}
+	in (stmt) => sqlite3_clear_bindings(stmt);
 
 	// Find column by name
 	int findColumn(string name)
@@ -277,10 +260,8 @@ public:
 	}
 
 	/// Reset the statement, to step through the resulting rows again.
-	void reset()
-	in (stmt) {
-		sqlite3_reset(stmt);
-	}
+	int reset()
+	in (stmt) => sqlite3_reset(stmt);
 }
 
 ///
@@ -320,10 +301,10 @@ unittest {
 }
 
 alias Query = RefCounted!Statement;
+package alias SB = SQLBuilder;
 
 /// A sqlite3 database
-class SQLite3 {
-	protected alias SB = SQLBuilder;
+struct SQLite3 {
 
 	/** Create a SQLite3 from a database file. If file does not exist, the
 	  * database will be initialized as new
@@ -363,10 +344,9 @@ class SQLite3 {
 	}
 
 	/// Return 'true' if database contains the given table
-	bool hasTable(string table) {
-		return query("SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-			table).step();
-	}
+	bool hasTable(string table) => query(
+		"SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+		table).step();
 
 	///
 	unittest {
@@ -392,9 +372,8 @@ class SQLite3 {
 	}
 
 	/// Create query from string and args to bind
-	auto query(Args...)(string sql, auto ref Args args) {
-		return Query(db, sql, args);
-	}
+	auto query(Args...)(string sql, auto ref Args args)
+		=> Query(db, sql, args);
 
 	private auto make(State state, string prefix, string suffix, T)(T s)
 	if (isAggregateType!T) {
@@ -416,17 +395,11 @@ class SQLite3 {
 				(qms.length ? qms[1 .. $] : qms) ~ ')')(s);
 	}
 
-	bool begin() {
-		return exec("begin");
-	}
+	bool begin() => exec("begin");
 
-	bool commit() {
-		return exec("commit");
-	}
+	bool commit() => exec("commit");
 
-	bool rollback() {
-		return exec("rollback");
-	}
+	bool rollback() => exec("rollback");
 
 	unittest {
 		mixin TEST;
@@ -442,7 +415,7 @@ class SQLite3 {
 		assert(db.hasTable("MyTable"));
 	}
 
-	protected sqlite3* db;
+	sqlite3* db;
 	mixin Manager!(db, sqlite3_close_v2);
 	alias close = free;
 }

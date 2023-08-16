@@ -207,26 +207,26 @@ public:
 						constraints;
 					}
 					static foreach (A; __traits(getAttributes, T.tupleof[I]))
-					static if (is(typeof(A) == sqlkey)) {
-						static if (A.key.length)
-							keys ~= "FOREIGN KEY(" ~ quote(colName) ~ ") REFERENCES " ~ A.key;
-						else
-							pkeys ~= colName;
-					} else static if (colName != "rowid" && is(typeof(A) == sqltype))
-						type = A.type;
-					else static if (is(typeof(A)))
-						static if (isSomeString!(typeof(A)))
-							static if (A.length) {
-								static if (A.startsWithWhite)
-									constraints ~= A;
-								else
-									constraints ~= ' ' ~ A;
-							}
+						static if (is(typeof(A) == sqlkey)) {
+							static if (A.key.length)
+								keys ~= "FOREIGN KEY(" ~ quote(colName) ~ ") REFERENCES " ~ A.key;
+							else
+								pkeys ~= colName;
+						} else static if (colName != "rowid" && is(typeof(A) == sqltype))
+							type = A.type;
+						else static if (is(typeof(A)))
+							static if (isSomeString!(typeof(A)))
+								static if (A.length) {
+									static if (A.startsWithWhite)
+										constraints ~= A;
+									else
+										constraints ~= ' ' ~ A;
+								}
 					static if (colName != "rowid") {
 						field ~= type ~ constraints;
 						enum MEMBER = T.init.tupleof[I];
 						if (MEMBER != FIELDS[I].init)
-						field ~= " default " ~ quote(MEMBER.to!string, '\'');
+							field ~= " default " ~ quote(MEMBER.to!string, '\'');
 						fields ~= field;
 					}
 				}
@@ -246,10 +246,9 @@ public:
 
 	alias insert(T) = insert!(OR.None, T);
 
-	static SB insert(OR or = OR.None, T)() if (isAggregateType!T) {
-		return SQLBuilder(make!(or ~ "INTO " ~ quote(SQLName!T) ~ '(',
+	static SB insert(OR or = OR.None, T)() if (isAggregateType!T)
+		=> SB(make!(or ~ "INTO " ~ quote(SQLName!T) ~ '(',
 				") VALUES(" ~ placeholders(ColumnCount!T) ~ ')', T), State.insert);
-	}
 
 	///
 	unittest {
@@ -258,9 +257,8 @@ public:
 	}
 
 	///
-	static SB select(STRING...)() if (STRING.length) {
-		return SB([STRING].join(','), State.select);
-	}
+	static SB select(STRING...)() if (STRING.length)
+		=> SB([STRING].join(','), State.select);
 	///
 	unittest {
 		assert(SQLBuilder.select!("only_one") == "SELECT only_one");
@@ -293,33 +291,28 @@ public:
 
 	///
 	SB from(Strings...)(Strings tables)
-	if (Strings.length > 1 && allSatisfy!(isSomeString, Strings)) {
-		return from([tables].join(','));
-	}
+	if (Strings.length > 1 && allSatisfy!(isSomeString, Strings))
+		=> from([tables].join(','));
 
 	///
-	SB from(TABLES...)() if (TABLES.length && allSatisfy!(isAggregateType, TABLES)) {
-		return from([staticMap!(SQLName, TABLES)].quoteJoin());
-	}
+	SB from(TABLES...)() if (TABLES.length && allSatisfy!(isAggregateType, TABLES))
+		=> from([staticMap!(SQLName, TABLES)].quoteJoin());
 
 	///
 	mixin(Clause!("set", "update"));
 
 	///
-	static SB update(OR or = OR.None, S)(S table) if (isSomeString!S) {
-		return SB(or ~ table, State.update);
-	}
+	static SB update(OR or = OR.None, S)(S table) if (isSomeString!S)
+		=> SB(or ~ table, State.update);
 
 	///
-	static SB update(T, OR or = OR.None)() if (isAggregateType!T) {
-		return SB(or ~ SQLName!T, State.update);
-	}
+	static SB update(T, OR or = OR.None)() if (isAggregateType!T)
+		=> SB(or ~ SQLName!T, State.update);
 
 	///
-	static SB updateAll(T, OR or = OR.None)() if (isAggregateType!T) {
-		return SQLBuilder(make!("UPDATE " ~ or ~ SQLName!T ~
-				" SET ", "=?", T), State.set);
-	}
+	static SB updateAll(T, OR or = OR.None)() if (isAggregateType!T) => SQLBuilder(
+		make!("UPDATE " ~ or ~ SQLName!T ~
+			" SET ", "=?", T), State.set);
 
 	///
 	unittest {
@@ -332,14 +325,12 @@ public:
 	mixin(Clause!("where", "set", "from", "del"));
 
 	///
-	static SB del(TABLE)() if (isAggregateType!TABLE) {
-		return del(SQLName!TABLE);
-	}
+	static SB del(TABLE)() if (isAggregateType!TABLE)
+		=> del(SQLName!TABLE);
 
 	///
-	static SB del(S)(S tablename) if (isSomeString!S) {
-		return SB(tablename, State.del);
-	}
+	static SB del(S)(S tablename) if (isSomeString!S)
+		=> SB(tablename, State.del);
 
 	///
 	unittest {
