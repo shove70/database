@@ -139,7 +139,7 @@ import postgresql;
     string feedURL; // matches feed_url
 }
 
-auto db = new PgSQLDB("127.0.0.1", "postgres", "postgres", "postgres");
+auto db = PgSQLDB("127.0.0.1", "postgres", "postgres", "postgres");
 db.runSql(`CREATE TABLE IF NOT EXISTS company(
 ID INT PRIMARY KEY	NOT NULL,
 NAME		TEXT	NOT NULL,
@@ -168,7 +168,7 @@ db.close();
 ```d
 import database.sqlite.db;
 
-auto db = new SQLite3DB("file.db");
+auto db = SQLite3DB("file.db");
 db.exec("INSERT INTO user (name, id) VALUES (?, ?)", name, id);
 ```
 

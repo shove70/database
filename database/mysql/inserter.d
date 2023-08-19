@@ -29,9 +29,7 @@ enum OnDuplicate {
 	updateAll = "UpdateAll"
 }
 
-auto inserter(Connection connection) {
-	return Inserter(connection);
-}
+auto inserter(Connection connection) => Inserter(connection);
 
 auto inserter(Args...)(Connection connection, OnDuplicate action, string tableName, Args columns) {
 	auto insert = Inserter(connection);
@@ -249,11 +247,11 @@ struct Inserter {
 
 	// dfmt off
 	@property {
-		size_t rows() const { return rows_ != 0; }
+		size_t rows() const => rows_ != 0;
 
-		size_t pending() const { return pending_ != 0; }
+		size_t pending() const => pending_ != 0;
 
-		size_t flushes() const { return flushes_; }
+		size_t flushes() const => flushes_;
 	}
 
 	void flush() {
@@ -318,7 +316,6 @@ private:
 	}
 
 	string placeholders(T)(T x, bool parens = true)
-	if (is(typeof(() { auto y = x.length; }))) {
-		return x.length.placeholders(parens);
-	}
+	if (is(typeof(() { auto y = x.length; })))
+		=> x.length.placeholders(parens);
 }

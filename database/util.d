@@ -61,7 +61,7 @@ enum isVisible(alias M) = __traits(getVisibility, M).length == 6; //public or ex
 
 private enum fitsInString(T) =
 	!isAssociativeArray!T && (!isArray!T || is(typeof(T.init[0]) == ubyte) ||
-	is(T == string));
+			is(T == string));
 
 template isWritableDataMember(alias M) {
 	alias TM = typeof(M);
@@ -244,9 +244,7 @@ template getSQLFields(string prefix, string suffix, T) {
 
 alias toz = toStringz;
 
-auto toStr(T)(T ptr) {
-	return fromStringz(ptr).idup;
-}
+auto toStr(T)(T ptr) => fromStringz(ptr).idup;
 
 template InputPacketMethods(E : Exception) {
 	void expect(T)(T x) {
@@ -262,7 +260,7 @@ template InputPacketMethods(E : Exception) {
 	auto countUntil(ubyte x, bool expect) {
 		auto index = in_.countUntil(x);
 		if (expect && (index < 0 || in_[index] != x))
-		throw new E("Bad packet format");
+			throw new E("Bad packet format");
 		return index;
 	}
 	// dfmt off
@@ -301,9 +299,9 @@ template InputPacketMethods(E : Exception) {
 		throw new E("Bad packet format");
 	}
 
-	auto remaining() const { return in_.length; }
+	auto remaining() const => in_.length;
 
-	bool empty() const { return in_.length == 0; }
+	bool empty() const => in_.length == 0;
 	// dfmt on
 }
 
@@ -327,13 +325,9 @@ template OutputPacketMethods() {
 		}
 	}
 
-	size_t length() const {
-		return pos;
-	}
+	size_t length() const => pos;
 
-	bool empty() const {
-		return pos == 0;
-	}
+	bool empty() const => pos == 0;
 }
 
 align(1) union _l {
@@ -418,9 +412,8 @@ class DBSocket(E : Exception) : TcpSocket {
 }
 
 public:
-T parse(T)(inout(char)[] data) if (isIntegral!T) {
-	return parse!T(data, 0);
-}
+T parse(T)(inout(char)[] data) if (isIntegral!T)
+	=> parse!T(data, 0);
 
 T parse(T)(ref inout(char)[] data, size_t startIndex = 0) if (isIntegral!T)
 in (startIndex <= data.length) {

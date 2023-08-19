@@ -21,14 +21,10 @@ struct InputPacket {
 		in_ = buffer;
 	}
 
-	@property auto type() const {
-		return typ;
-	}
+	@property auto type() const => typ;
 
 	T peek(T)() const if (!is(T == struct) && !isArray!T)
-	in (T.sizeof <= in_.length) {
-		return native(cast(const T*)in_.ptr);
-	}
+	in (T.sizeof <= in_.length) => native(cast(const T*)in_.ptr);
 
 	T eat(T)() @trusted if (!is(T == struct) && !isArray!T)
 	in (T.sizeof <= in_.length) {
@@ -37,17 +33,12 @@ struct InputPacket {
 		return native(p);
 	}
 
-	T eat(T : Date)() {
-		return PGEpochDate + dur!"days"(eat!int);
-	}
+	T eat(T : Date)() => PGEpochDate + dur!"days"(eat!int);
 
-	T eat(T : TimeOfDay)() {
-		return PGEpochTime + dur!"usecs"(eat!long);
-	}
+	T eat(T : TimeOfDay)() => PGEpochTime + dur!"usecs"(eat!long);
 
-	T eat(T : DateTime)() { // timestamp
-		return PGEpochDateTime + dur!"usecs"(eat!long);
-	}
+	T eat(T : DateTime)() // timestamp
+	=> PGEpochDateTime + dur!"usecs"(eat!long);
 
 	T eat(T : SysTime)() { // timestamptz
 		T x = T(PGEpochDateTime + dur!"usecs"(eat!long), UTC());
@@ -101,25 +92,20 @@ struct OutputPacket {
 		put!ubyte(0);
 	}
 
-	void put(T)(T x) if (!is(T == struct) && !is(T : const char[])) {
-		put(pos, x);
-	}
+	void put(T)(T x) if (!is(T == struct) && !is(T : const char[]))
+		=> put(pos, x);
 
-	void put(Date x) {
-		put(x.dayOfGregorianCal - PGEpochDay);
-	}
+	void put(Date x)
+		=> put(x.dayOfGregorianCal - PGEpochDay);
 
-	void put(in TimeOfDay x) {
-		put(cast(int)(x - PGEpochTime).total!"usecs");
-	}
+	void put(in TimeOfDay x)
+		=> put(cast(int)(x - PGEpochTime).total!"usecs");
 
-	void put(in DateTime x) { // timestamp
-		put(cast(int)(x - PGEpochDateTime).total!"usecs");
-	}
+	void put(in DateTime x) // timestamp
+	=> put(cast(int)(x - PGEpochDateTime).total!"usecs");
 
-	void put(in SysTime x) { // timestamptz
-		put(cast(int)(x - SysTime(PGEpochDateTime, UTC())).total!"usecs");
-	}
+	void put(in SysTime x) // timestamptz
+	=> put(cast(int)(x - SysTime(PGEpochDateTime, UTC())).total!"usecs");
 
 	ubyte[] data() {
 		finalize();

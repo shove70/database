@@ -41,9 +41,7 @@ struct QueryResult(T) {
 		step();
 	}
 
-	@property T front() {
-		return this.get!T;
-	}
+	@property T front() => this.get!T;
 }
 
 unittest {
@@ -52,11 +50,13 @@ unittest {
 }
 
 /// A Database with query building capabilities
-class SQLite3DB : SQLite3 {
+struct SQLite3DB {
+	SQLite3 db;
+	alias db this;
 	bool autoCreateTable = true;
 
-	this(string name) {
-		super(name);
+	this(string name, int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, int busyTimeout = 500) {
+		db = SQLite3(name, flags, busyTimeout);
 	}
 
 	bool create(T)() {
@@ -65,9 +65,8 @@ class SQLite3DB : SQLite3 {
 		return q.lastCode == SQLITE_DONE;
 	}
 
-	auto selectAllWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
-		return QueryResult!T(query(SB.selectAllFrom!T.where(expr), args));
-	}
+	auto selectAllWhere(T, string expr, Args...)(auto ref Args args) if (expr.length)
+		=> QueryResult!T(query(SB.selectAllFrom!T.where(expr), args));
 
 	T selectOneWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
@@ -76,14 +75,13 @@ class SQLite3DB : SQLite3 {
 		throw new SQLEx("No match");
 	}
 
-	T selectOneWhere(T, string expr, T defValue, Args...)(auto ref Args args) if (expr.length) {
+	T selectOneWhere(T, string expr, T defValue, Args...)(auto ref Args args)
+	if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
 		return q.step() ? q.get!T : defValue;
 	}
 
-	T selectRow(T)(ulong row) {
-		return selectOneWhere!(T, "rowid=?")(row);
-	}
+	T selectRow(T)(ulong row) => selectOneWhere!(T, "rowid=?")(row);
 
 	unittest {
 		mixin TEST;
@@ -109,7 +107,7 @@ class SQLite3DB : SQLite3 {
 			if (!create!T)
 				return 0;
 		}
-		super.insert!or(row).step();
+		db.insert!or(row).step();
 		return db.changes;
 	}
 

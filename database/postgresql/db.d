@@ -39,13 +39,10 @@ struct PgSQLDB {
 		return exec(sql, s.tupleof);
 	}
 
-	ulong replaceInto(T)(T s) {
-		return insert!(OR.Replace, T)(s);
-	}
+	ulong replaceInto(T)(T s) => insert!(OR.Replace, T)(s);
 
-	auto selectAllWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
-		return this.query!T(SB.selectAllFrom!T.where(expr), args);
-	}
+	auto selectAllWhere(T, string expr, Args...)(auto ref Args args) if (expr.length)
+		=> this.query!T(SB.selectAllFrom!T.where(expr), args);
 
 	T selectOneWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
@@ -54,14 +51,14 @@ struct PgSQLDB {
 		return q.get!T;
 	}
 
-	T selectOneWhere(T, string expr, T defValue, Args...)(auto ref Args args) if (expr.length) {
+	T selectOneWhere(T, string expr, T defValue, Args...)(auto ref Args args)
+	if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
 		return q ? q.get!T : defValue;
 	}
 
-	bool hasTable(string table) {
-		return !query("select 1 from pg_class where relname = $1", table).empty;
-	}
+	bool hasTable(string table)
+		=> !query("select 1 from pg_class where relname = $1", table).empty;
 
 	bool hasTable(T)() if (isAggregateType!T) {
 		enum sql = "select 1 from pg_class where relname = " ~ quote(SQLName!T);
@@ -99,17 +96,11 @@ struct QueryResult(T = PgSQLRow) {
 	}
 
 	@property pure nothrow @nogc {
-		bool empty() const {
-			return row.values.length == 0;
-		}
+		bool empty() const => row.values.length == 0;
 
-		PgSQLHeader header() {
-			return row.header;
-		}
+		PgSQLHeader header() => row.header;
 
-		T opCast(T : bool)() const {
-			return !empty;
-		}
+		T opCast(T : bool)() const => !empty;
 	}
 
 	void popFront() {
@@ -149,7 +140,7 @@ struct QueryResult(T = PgSQLRow) {
 	}
 
 	void clear() {
-		if (!empty) {
+		if (!empty && !connection.ready) {
 			eatStatuses();
 			row.values.length = 0;
 		}
@@ -163,7 +154,6 @@ void eatValue(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue valu
 	import std.array;
 	import std.conv : to;
 	import std.datetime;
-	static import std.uuid;
 
 	auto length = packet.eat!uint;
 	if (length == uint.max) {
@@ -275,9 +265,8 @@ void eatValue(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue valu
 	}
 }
 
-uint hexDecode(char c) @nogc pure nothrow {
-	return c + 9 * (c >> 6) & 15;
-}
+uint hexDecode(char c) @nogc pure nothrow
+	=> c + 9 * (c >> 6) & 15;
 
 public unittest {
 	import database.util;
@@ -291,7 +280,7 @@ public unittest {
 		string feedURL; // matches feed_url
 	}
 
-	scope db = new PgSQLDB("127.0.0.1", "postgres", "postgres", "postgres");
+	auto db = PgSQLDB("127.0.0.1", "postgres", "postgres", "postgres");
 	db.runSql(`CREATE TABLE IF NOT EXISTS company(
 	ID INT PRIMARY KEY	NOT NULL,
 	NAME		TEXT	NOT NULL,

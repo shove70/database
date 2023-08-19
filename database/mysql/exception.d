@@ -2,7 +2,7 @@ module database.mysql.exception;
 
 import database.util : DBException;
 
-@safe pure:
+@safe:
 
 class MySQLException : DBException {
 	this(string msg, string file = __FILE__, size_t line = __LINE__) pure {
