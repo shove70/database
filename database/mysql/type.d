@@ -275,8 +275,8 @@ struct MySQLValue {
 		case MYSQL_TYPE_DOUBLE:
 			return cast(T)(*cast(double*)buffer_.ptr);
 		default:
-			throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(
-					type_), T.stringof));
+			throw new MySQLErrorException("Cannot convert '%s' from %s to %s".format(name_,
+					columnTypeName(type_), T.stringof));
 		}
 	}
 
@@ -291,8 +291,8 @@ struct MySQLValue {
 		case MYSQL_TYPE_TIMESTAMP2:
 			return (*cast(MySQLDateTime*)buffer_.ptr).to!T;
 		default:
-			throw new MySQLErrorException("Cannot convert '%s' from %s to %s".format(name_, columnTypeName(
-					type_, T.stringof)));
+			throw new MySQLErrorException("Cannot convert '%s' from %s to %s".format(name_,
+					columnTypeName(type_), T.stringof));
 		}
 	}
 
@@ -309,8 +309,8 @@ struct MySQLValue {
 		case MYSQL_TYPE_TIME2:
 			return (*cast(MySQLTime*)buffer_.ptr).to!T;
 		default:
-			throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(
-					type_), T.stringof));
+			throw new MySQLErrorException("Cannot convert '%s' from %s to %s".format(name_,
+					columnTypeName(type_), T.stringof));
 		}
 	}
 
@@ -320,8 +320,8 @@ struct MySQLValue {
 		case MYSQL_TYPE_TIME2:
 			return (*cast(MySQLTime*)buffer_.ptr).to!T;
 		default:
-			throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(
-					type_), T.stringof));
+			throw new MySQLErrorException("Cannot convert '%s' from %s to %s".format(name_,
+					columnTypeName(type_), T.stringof));
 		}
 	}
 
@@ -346,8 +346,8 @@ struct MySQLValue {
 		case MYSQL_TYPE_GEOMETRY:
 			return (*cast(T*)buffer_.ptr).dup;
 		default:
-			throw new MySQLErrorException(format("Cannot convert '%s' from %s to %s", name_, columnTypeName(
-					type_), T.stringof));
+			throw new MySQLErrorException("Cannot convert '%s' from %s to %s".format(name_,
+					columnTypeName(type_), T.stringof));
 		}
 	}
 
@@ -389,8 +389,8 @@ struct MySQLValue {
 		case MYSQL_TYPE_GEOMETRY:
 			return (*cast(T*)buffer_.ptr);
 		default:
-			throw new MySQLErrorException("Cannot convert '%s' from %s to %s".format(name_, columnTypeName(
-					type_), T.stringof));
+			throw new MySQLErrorException("Cannot convert '%s' from %s to %s".format(name_,
+					columnTypeName(type_), T.stringof));
 		}
 	}
 
@@ -873,7 +873,7 @@ auto parseMySQLTime(const(char)[] x) {
 			case 3: time.usecs *= 1_000; break;
 			case 4: time.usecs *= 10_000; break;
 			case 5: time.usecs *= 100_000; break;
-			default: assert(0, "Bad datetime string format"); break;
+			default: assert(0, "Bad datetime string format");
 		}
 	}
 
@@ -906,7 +906,7 @@ auto parseMySQLDateTime(const(char)[] x) {
 				case 3: time.usec *= 1_000; break;
 				case 4: time.usec *= 10_000; break;
 				case 5: time.usec *= 100_000; break;
-				default: assert(0, "Bad datetime string format"); break;
+				default: assert(0, "Bad datetime string format");
 			}
 		}
 	}
