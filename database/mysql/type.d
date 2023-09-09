@@ -14,8 +14,6 @@ import database.mysql.exception;
 import database.mysql.row;
 public import database.util;
 
-alias SQLName = KeyName;
-
 alias Unnull(N : Nullable!T, T) = T;
 alias Unnull(T) = T;
 

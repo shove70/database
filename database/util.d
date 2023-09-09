@@ -4,11 +4,14 @@ module database.util;
 import core.time,
 	database.sqlbuilder,
 	std.exception,
+	std.meta,
 	std.socket,
 	std.string,
 	std.traits,
 	std.typecons;
 // dfmt on
+
+public import database.traits;
 
 class DBException : Exception {
 	this(string msg, string file = __FILE__, size_t line = __LINE__) pure @safe {
@@ -16,84 +19,8 @@ class DBException : Exception {
 	}
 }
 
-struct as { // @suppress(dscanner.style.phobos_naming_convention)
-	string name;
-}
-
-enum ignore; // @suppress(dscanner.style.phobos_naming_convention)
-
-enum optional; // @suppress(dscanner.style.phobos_naming_convention)
-
-/// Get the keyname of `T`, return empty if fails
-template KeyName(alias T, string defaultName = T.stringof) {
-	import std.traits;
-
-	static if (hasUDA!(T, ignore))
-		enum KeyName = "";
-	else static if (hasUDA!(T, as))
-		enum KeyName = getUDAs!(T, as)[0].name;
-	else
-		static foreach (attr; __traits(getAttributes, T))
-		static if (is(typeof(KeyName) == void) && is(typeof(attr(""))))
-			enum KeyName = attr(defaultName);
-	static if (is(typeof(KeyName) == void))
-		enum KeyName = defaultName;
-}
-
-enum {
-	default0 = "default '0'",
-	notnull = "not null",
-	unique = "unique"
-}
-
-struct sqlkey { // @suppress(dscanner.style.phobos_naming_convention)
-	string key;
-}
-
-struct sqltype { // @suppress(dscanner.style.phobos_naming_convention)
-	string type;
-}
-
-/// foreign key
-enum foreign(alias field) = sqlkey(ColumnName!(field, true));
-
-enum isVisible(alias M) = __traits(getVisibility, M).length == 6; //public or export
-
-private enum fitsInString(T) =
-	!isAssociativeArray!T && (!isArray!T || is(typeof(T.init[0]) == ubyte) ||
-			is(T == string));
-
-template isWritableDataMember(alias M) {
-	alias TM = typeof(M);
-	static if (is(AliasSeq!M) || hasUDA!(M, ignore))
-		enum isWritableDataMember = false;
-	else static if (is(TM == enum))
-		enum isWritableDataMember = true;
-	else static if (!fitsInString!TM || isSomeFunction!TM)
-		enum isWritableDataMember = false;
-	else static if (!is(typeof(() { M = TM.init; }())))
-		enum isWritableDataMember = false;
-	else
-		enum isWritableDataMember = isVisible!M;
-}
-
-template isReadableDataMember(alias M) {
-	alias TM = typeof(M);
-	static if (is(AliasSeq!M) || hasUDA!(M, ignore))
-		enum isReadableDataMember = false;
-	else static if (is(TM == enum))
-		enum isReadableDataMember = true;
-	else static if (!fitsInString!TM)
-		enum isReadableDataMember = false;
-	else static if (isSomeFunction!TM /* && return type is valueType*/ )
-		enum isReadableDataMember = true;
-	else static if (!is(typeof({ TM x = M; })))
-		enum isReadableDataMember = false;
-	else
-		enum isReadableDataMember = isVisible!M;
-}
-
 private:
+
 enum CharClass {
 	Other,
 	LowerCase,
@@ -174,7 +101,7 @@ unittest {
 	test("coverImageURL", "cover_image_url");
 }
 
-S camelCase(S, bool upper = false)(S input, char sep = '_') {
+S camelCase(S, bool upper = false)(in S input, char sep = '_') {
 	S output;
 	bool upcaseNext = upper;
 	foreach (c; input) {
@@ -190,59 +117,70 @@ S camelCase(S, bool upper = false)(S input, char sep = '_') {
 	return output;
 }
 
+S pascalCase(S)(in S input, char sep = '_')
+	=> camelCase!(S, true)(input, sep);
+
 unittest {
 	assert("c".camelCase == "c");
-	assert("c".camelCase!true == "C");
+	assert("c".pascalCase == "C");
 	assert("c_a".camelCase == "cA");
-	assert("ca".camelCase!true == "Ca");
-	assert("camel".camelCase!true == "Camel");
-	assert("Camel".camelCase!false == "camel");
-	assert("camel_case".camelCase!true == "CamelCase");
-	assert("camel_camel_case".camelCase!true == "CamelCamelCase");
-	assert("caMel_caMel_caSe".camelCase!true == "CamelCamelCase");
-	assert("camel2_camel2_case".camelCase!true == "Camel2Camel2Case");
+	assert("ca".pascalCase == "Ca");
+	assert("camel".pascalCase == "Camel");
+	assert("Camel".camelCase == "camel");
+	assert("camel_case".pascalCase == "CamelCase");
+	assert("camel_camel_case".pascalCase == "CamelCamelCase");
+	assert("caMel_caMel_caSe".pascalCase == "CamelCamelCase");
+	assert("camel2_camel2_case".pascalCase == "Camel2Camel2Case");
 	assert("get_http_response_code".camelCase == "getHttpResponseCode");
 	assert("get2_http_response_code".camelCase == "get2HttpResponseCode");
-	assert("http_response_code".camelCase!true == "HttpResponseCode");
-	assert("http_response_code_xyz".camelCase!true == "HttpResponseCodeXyz");
+	assert("http_response_code".pascalCase == "HttpResponseCode");
+	assert("http_response_code_xyz".pascalCase == "HttpResponseCodeXyz");
+}
+
+S quote(S)(S s, char q = '"') if (isSomeString!S) {
+	version (NO_SQLQUOTE)
+		return s;
+	else
+		return q ~ s ~ q;
+}
+
+S quoteJoin(S, bool leaveTail = false)(S[] s, char sep = ',', char q = '"')
+if (isSomeString!S) {
+	import std.array;
+
+	auto res = appender!S;
+	for (size_t i; i < s.length; i++) {
+		version (NO_SQLQUOTE)
+			res ~= s[i];
+		else {
+			res ~= q;
+			res ~= s[i];
+			res ~= q;
+		}
+		if (leaveTail || i + 1 < s.length)
+			res ~= sep;
+	}
+	return res[];
+}
+
+T parse(T)(inout(char)[] data) if (isIntegral!T)
+	=> parse!T(data, 0);
+
+T parse(T)(ref inout(char)[] data, size_t startIndex = 0) if (isIntegral!T)
+in (startIndex <= data.length) {
+	T x;
+	auto i = startIndex;
+	for (; i < data.length; ++i) {
+		const c = data[i];
+		if (c < '0' || c > '9')
+			break;
+		x = x * 10 + (c ^ '0');
+	}
+	data = data[i .. $];
+	return x;
 }
 
 package(database):
-alias CutOut(size_t I, T...) = AliasSeq!(T[0 .. I], T[I + 1 .. $]);
-
-template getSQLFields(string prefix, string suffix, T) {
-	import std.conv : to;
-	import std.meta;
-
-	static string putPlaceholders(string[] s) {
-		string res;
-		for (size_t i; i < s.length;) {
-			version (NO_SQLQUOTE)
-				res ~= s[i];
-			else {
-				res ~= '"';
-				res ~= s[i];
-				res ~= '"';
-			}
-			++i;
-			if (i == s.length)
-				res ~= "=$" ~ i.to!string ~ ',';
-		}
-		return res[];
-	}
-
-	enum colNames = ColumnNames!T,
-		I = staticIndexOf!("rowid", colNames),
-		sql(S...) = prefix ~ (suffix == "=?" ? putPlaceholders([S]) : [S].quoteJoin())
-		~ suffix;
-	// Skips "rowid" field
-	static if (I >= 0)
-		enum sqlFields = CutOut!(I, colNames);
-	else
-		enum sqlFields = colNames;
-}
-
-alias toz = toStringz;
 
 auto toStr(T)(T ptr) => fromStringz(ptr).idup;
 
@@ -359,7 +297,7 @@ class DBSocket(E : Exception) : TcpSocket {
 	import core.stdc.errno;
 
 @safe:
-	this(scope const(char)[] host, ushort port) {
+	this(in char[] host, ushort port) {
 		super(new InternetAddress(host, port));
 		setOption(SocketOptionLevel.SOCKET, SocketOption.KEEPALIVE, true);
 		setOption(SocketOptionLevel.TCP, SocketOption.TCP_NODELAY, true);
@@ -409,22 +347,4 @@ class DBSocket(E : Exception) : TcpSocket {
 				throw new E("Sent std.socket.Socket.ERROR: " ~ formatSocketError(errno));
 		}
 	}
-}
-
-public:
-T parse(T)(inout(char)[] data) if (isIntegral!T)
-	=> parse!T(data, 0);
-
-T parse(T)(ref inout(char)[] data, size_t startIndex = 0) if (isIntegral!T)
-in (startIndex <= data.length) {
-	T x;
-	auto i = startIndex;
-	for (; i < data.length; ++i) {
-		const c = data[i];
-		if (c < '0' || c > '9')
-			break;
-		x = x * 10 + (c ^ '0');
-	}
-	data = data[i .. $];
-	return x;
 }

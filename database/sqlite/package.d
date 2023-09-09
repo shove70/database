@@ -35,7 +35,7 @@ class SQLiteException : DBException {
 
 /// Setup code for tests
 version (unittest) package template TEST(string dbname = "", T = SQLite3) {
-	T db = () {
+	T db = {
 		static if (dbname.length) {
 			tryRemove(dbname ~ ".db");
 			return T(dbname ~ ".db");
@@ -46,15 +46,16 @@ version (unittest) package template TEST(string dbname = "", T = SQLite3) {
 
 package {
 	alias SQLEx = SQLiteException;
+	alias SB = SQLBuilder;
+	alias toz = toStringz;
 
 	void checkError(sqlite3* db, string prefix, int rc,
 		string file = __FILE__, int line = __LINE__)
 	in (db) {
 		if (rc < 0)
 			rc = sqlite3_errcode(db);
-		enforce!SQLEx(
-			rc == SQLITE_OK || rc == SQLITE_ROW || rc == SQLITE_DONE, prefix ~
-				" (" ~ rc.to!string ~ "): " ~ db.errmsg, file, line);
+		enforce!SQLEx(rc == SQLITE_OK || rc == SQLITE_ROW || rc == SQLITE_DONE,
+			prefix ~ " (" ~ rc.to!string ~ "): " ~ db.errmsg, file, line);
 	}
 }
 
@@ -124,6 +125,70 @@ struct Statement {
 	}
 
 	alias close = free;
+
+	/// Bind these args in order to '?' marks in statement
+	void set(Args...)(auto ref Args args) {
+		static foreach (a; args)
+			db.checkError("Bind failed: ", bindArg(++argIndex, a));
+	}
+
+	int clear()
+	in (stmt) => sqlite3_clear_bindings(stmt);
+
+	// Find column by name
+	int findColumn(string name)
+	in (stmt) {
+		import core.stdc.string : strcmp;
+
+		auto ptr = name.toz;
+		int count = sqlite3_column_count(stmt);
+		for (int i = 0; i < count; i++) {
+			if (strcmp(sqlite3_column_name(stmt, i), ptr) == 0)
+				return i;
+		}
+		return -1;
+	}
+
+	/// Get current row (and column) as a basic type
+	T get(T, int COL = 0)() if (!isAggregateType!T) {
+		if (lastCode == -1)
+			step();
+		return getArg!T(COL);
+	}
+
+	/// Map current row to the fields of the given T
+	T get(T, int _ = 0)() if (isAggregateType!T) {
+		if (lastCode == -1)
+			step();
+		T t;
+		int i = void;
+		static foreach (N; FieldNameTuple!T) {
+			i = findColumn(ColumnName!(T, N));
+			if (i >= 0)
+				__traits(getMember, t, N) = getArg!(typeof(__traits(getMember, t, N)))(i);
+		}
+		return t;
+	}
+
+	/// Get current row as a tuple
+	Tuple!T get(T...)() {
+		Tuple!T t;
+		foreach (I, Ti; T)
+			t[I] = get!(Ti, I)();
+		return t;
+	}
+
+	/// Step the SQL statement; move to next row of the result set. Return `false` if there are no more rows
+	bool step()
+	in (stmt) {
+		lastCode = sqlite3_step(stmt);
+		db.checkError("Step failed", lastCode);
+		return lastCode == SQLITE_ROW;
+	}
+
+	/// Reset the statement, to step through the resulting rows again.
+	int reset()
+	in (stmt) => sqlite3_reset(stmt);
 
 private:
 	sqlite3* db;
@@ -197,71 +262,6 @@ private:
 				return cast(T)ptr[0 .. size].dup;
 		}
 	}
-
-public:
-	/// Bind these args in order to '?' marks in statement
-	void set(Args...)(auto ref Args args) {
-		static foreach (a; args)
-			db.checkError("Bind failed: ", bindArg(++argIndex, a));
-	}
-
-	int clear()
-	in (stmt) => sqlite3_clear_bindings(stmt);
-
-	// Find column by name
-	int findColumn(string name)
-	in (stmt) {
-		import core.stdc.string : strcmp;
-
-		auto ptr = name.toz;
-		int count = sqlite3_column_count(stmt);
-		for (int i = 0; i < count; i++) {
-			if (strcmp(sqlite3_column_name(stmt, i), ptr) == 0)
-				return i;
-		}
-		return -1;
-	}
-
-	/// Get current row (and column) as a basic type
-	T get(T, int COL = 0)() if (!isAggregateType!T) {
-		if (lastCode == -1)
-			step();
-		return getArg!T(COL);
-	}
-
-	/// Map current row to the fields of the given T
-	T get(T, int _ = 0)() if (isAggregateType!T) {
-		if (lastCode == -1)
-			step();
-		T t;
-		int i = void;
-		static foreach (N; FieldNameTuple!T) {
-			i = findColumn(ColumnName!(T, N));
-			if (i >= 0)
-				__traits(getMember, t, N) = getArg!(typeof(__traits(getMember, t, N)))(i);
-		}
-		return t;
-	}
-
-	/// Get current row as a tuple
-	Tuple!T get(T...)() {
-		Tuple!T t;
-		foreach (I, Ti; T)
-			t[I] = get!(Ti, I)();
-		return t;
-	}
-
-	/// Step the SQL statement; move to next row of the result set. Return `false` if there are no more rows
-	bool step()
-	in (stmt) {
-		lastCode = sqlite3_step(stmt);
-		db.checkError("Step failed", lastCode);
-		return lastCode == SQLITE_ROW;
-	}
-
-	/// Reset the statement, to step through the resulting rows again.
-	int reset()
-	in (stmt) => sqlite3_reset(stmt);
 }
 
 ///
@@ -301,7 +301,6 @@ unittest {
 }
 
 alias Query = RefCounted!Statement;
-package alias SB = SQLBuilder;
 
 /// A sqlite3 database
 struct SQLite3 {
