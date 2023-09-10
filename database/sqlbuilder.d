@@ -2,13 +2,13 @@ module database.sqlbuilder;
 // dfmt off
 import
 	database.util,
+	std.ascii,
 	std.meta,
 	std.range,
 	std.traits;
 // dfmt on
 import std.string : join, count;
 public import database.traits : SQLName;
-
 
 enum State {
 	none = "",
@@ -63,59 +63,8 @@ struct SQLBuilder {
 	}
 
 	static SB create(T)() if (isAggregateType!T) {
-		import std.conv : to;
-
-		string s;
-		static foreach (A; __traits(getAttributes, T))
-			static if (is(typeof(A)))
-				static if (isSomeString!(typeof(A)))
-					static if (A.length) {
-						static if (A.startsWithWhite)
-							s ~= A;
-						else
-							s ~= ' ' ~ A;
-					}
-		alias FIELDS = Fields!T;
-		string[] fields, keys, pkeys;
-
-		static foreach (I, colName; ColumnNames!T)
-			static if (colName.length) {
-				{
-					static if (colName != "rowid") {
-						string field = quote(colName) ~ ' ',
-						type = SQLTypeOf!(FIELDS[I]),
-						constraints;
-					}
-					static foreach (A; __traits(getAttributes, T.tupleof[I]))
-						static if (is(typeof(A) == sqlkey)) {
-							static if (A.key.length)
-								keys ~= "FOREIGN KEY(" ~ quote(colName) ~ ") REFERENCES " ~ A.key;
-							else
-								pkeys ~= colName;
-						} else static if (colName != "rowid" && is(typeof(A) == sqltype))
-							type = A.type;
-						else static if (is(typeof(A)))
-							static if (isSomeString!(typeof(A)))
-								static if (A.length) {
-									static if (A.startsWithWhite)
-										constraints ~= A;
-									else
-										constraints ~= ' ' ~ A;
-								}
-					static if (colName != "rowid") {
-						field ~= type ~ constraints;
-						enum MEMBER = T.init.tupleof[I];
-						if (MEMBER != FIELDS[I].init)
-							field ~= " default " ~ quote(MEMBER.to!string, '\'');
-						fields ~= field;
-					}
-				}
-			}
-		if (pkeys)
-			keys ~= "PRIMARY KEY(" ~ pkeys.quoteJoin() ~ ')';
-
-		return SB(quote(SQLName!T) ~ '(' ~ join(fields ~ keys, ',') ~ ')'
-				~ s, State.createNX);
+		enum sql = createTable!T;
+		return sql;
 	}
 
 	///
@@ -137,8 +86,8 @@ struct SQLBuilder {
 	}
 
 	///
-	static SB select(STRING...)() if (STRING.length) {
-		enum sql = [STRING].join(',');
+	static SB select(Fields...)() if (Fields.length) {
+		enum sql = [Fields].join(',');
 		return SB(sql, State.select);
 	}
 
@@ -149,9 +98,9 @@ struct SQLBuilder {
 	}
 
 	///
-	static SB selectAllFrom(STRUCTS...)() if (allSatisfy!(isAggregateType, STRUCTS)) {
+	static SB selectAllFrom(Tables...)() if (allSatisfy!(isAggregateType, Tables)) {
 		string[] fields, tables;
-		foreach (S; STRUCTS) {
+		foreach (S; Tables) {
 			{
 				enum tblName = SQLName!S;
 				foreach (N; FieldNameTuple!S)
@@ -173,13 +122,13 @@ struct SQLBuilder {
 	mixin(Clause!("from", "set", "select"));
 
 	///
-	SB from(Strings...)(Strings tables)
-	if (Strings.length > 1 && allSatisfy!(isSomeString, Strings))
+	SB from(Tables...)(Tables tables)
+	if (Tables.length > 1 && allSatisfy!(isSomeString, Tables))
 		=> from([tables].join(','));
 
 	///
-	SB from(TABLES...)() if (TABLES.length && allSatisfy!(isAggregateType, TABLES))
-		=> from([staticMap!(SQLName, TABLES)].quoteJoin());
+	SB from(Tables...)() if (Tables.length && allSatisfy!(isAggregateType, Tables))
+		=> from([staticMap!(SQLName, Tables)].quoteJoin());
 
 	///
 	mixin(Clause!("set", "update"));
@@ -207,12 +156,12 @@ struct SQLBuilder {
 	mixin(Clause!("where", "set", "from", "del"));
 
 	///
-	static SB del(TABLE)() if (isAggregateType!TABLE)
-		=> del(SQLName!TABLE);
+	static SB del(Table)() if (isAggregateType!Table)
+		=> del(SQLName!Table);
 
 	///
-	static SB del(S)(S tablename) if (isSomeString!S)
-		=> SB(tablename, State.del);
+	static SB del(S)(S table) if (isSomeString!S)
+		=> SB(table, State.del);
 
 	///
 	unittest {
@@ -266,13 +215,12 @@ unittest {
 
 	assert(SB.create!User == `CREATE TABLE IF NOT EXISTS "User"("name" TEXT,"age" INT)`);
 
-	auto qb0 = SB.select!"name"
+	auto q = SB.select!"name"
 		.from!User
 		.where("age=$1");
 
-	// The properties `sql` and `bind` can be used to access the generated sql and the
-	// bound parameters
-	assert(qb0.sql == `SELECT name FROM "User" WHERE age=$1`);
+	// The properties `sql` can be used to access the generated sql
+	assert(q.sql == `SELECT name FROM "User" WHERE age=$1`);
 
 	/// We can decorate structs and fields to give them different names in the database.
 	@as("msg") struct Message {
@@ -285,8 +233,8 @@ unittest {
 
 	assert(SB.create!Message == `CREATE TABLE IF NOT EXISTS "msg"("contents" TEXT)`);
 
-	auto qb = SB.insert!Message;
-	assert(qb == `INSERT INTO "msg"("contents") VALUES($1)`);
+	auto q2 = SB.insert!Message;
+	assert(q2 == `INSERT INTO "msg"("contents") VALUES($1)`);
 }
 
 unittest {
@@ -312,10 +260,63 @@ unittest {
 
 private:
 
-bool startsWithWhite(S)(S s) {
-	import std.ascii;
+bool startsWithWhite(S)(S s)
+	=> s.length && s[0].isWhite;
 
-	return s.length && s[0].isWhite;
+SB createTable(T)() {
+	import std.conv : to;
+
+	string s;
+	static foreach (A; __traits(getAttributes, T))
+		static if (is(typeof(A)))
+			static if (isSomeString!(typeof(A)))
+				static if (A.length) {
+					static if (A.startsWithWhite)
+						s ~= A;
+					else
+						s ~= ' ' ~ A;
+				}
+	alias FIELDS = Fields!T;
+	string[] fields, keys, pkeys;
+
+	static foreach (I, colName; ColumnNames!T)
+		static if (colName.length) {
+			{
+				static if (colName != "rowid") {
+					string field = quote(colName) ~ ' ',
+					type = SQLTypeOf!(FIELDS[I]),
+					constraints;
+				}
+				static foreach (A; __traits(getAttributes, T.tupleof[I]))
+					static if (is(typeof(A) == sqlkey)) {
+						static if (A.key.length)
+							keys ~= "FOREIGN KEY(" ~ quote(colName) ~ ") REFERENCES " ~ A.key;
+						else
+							pkeys ~= colName;
+					} else static if (colName != "rowid" && is(typeof(A) == sqltype))
+						type = A.type;
+					else static if (is(typeof(A)))
+						static if (isSomeString!(typeof(A)))
+							static if (A.length) {
+								static if (A.startsWithWhite)
+									constraints ~= A;
+								else
+									constraints ~= ' ' ~ A;
+							}
+				static if (colName != "rowid") {
+					field ~= type ~ constraints;
+					enum member = T.init.tupleof[I];
+					if (member != FIELDS[I].init)
+						field ~= " default " ~ quote(member.to!string, '\'');
+					fields ~= field;
+				}
+			}
+		}
+	if (pkeys.length)
+		keys ~= "PRIMARY KEY(" ~ quoteJoin(pkeys) ~ ')';
+
+	return SB(quote(SQLName!T) ~ '(' ~ join(fields ~ keys, ',') ~ ')'
+			~ s, State.createNX);
 }
 
 alias SB = SQLBuilder;
