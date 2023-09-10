@@ -38,6 +38,7 @@ subPackage {
 subPackage {
 	name "util"
 	dflags "-preview=in" "-dip1008"
-	sourceFiles "database/pool.d" "database/row.d" "database/sqlbuilder.d" "database/util.d"
+	sourceFiles "database/pool.d" "database/row.d" "database/sqlbuilder.d" "database/traits.d" "database/util.d"
+	excludedSourceFiles "source/*.d"
 	importPaths "."
 }

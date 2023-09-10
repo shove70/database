@@ -25,9 +25,15 @@ struct PgSQLDB {
 		conn = new Connection(host, user, pwd, db, port);
 	}
 
-	bool create(T)() {
-		enum sql = SB.create!T;
-		exec(sql);
+	bool create(Tables...)() if (Tables.length) {
+		import std.array, std.meta;
+
+		static if (Tables.length == 1)
+			exec(SB.create!Tables);
+		else {
+			enum sql = [staticMap!(SB.create, Tables)].join(";");
+			runSql(sql);
+		}
 		return true;
 	}
 

@@ -12,8 +12,6 @@ import std.traits;
 import std.typecons;
 public import database.util;
 
-alias SQLName = KeyName;
-
 enum isValueType(T) = !is(Unqual!T == struct) || is(Unqual!T == PgSQLValue) ||
 	is(Unqual!T == Date) || is(Unqual!T == DateTime) || is(Unqual!T == SysTime);
 

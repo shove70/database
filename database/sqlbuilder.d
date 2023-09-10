@@ -2,115 +2,13 @@ module database.sqlbuilder;
 // dfmt off
 import
 	database.util,
-	std.exception,
-	std.datetime,
+	std.ascii,
 	std.meta,
 	std.range,
 	std.traits;
 // dfmt on
 import std.string : join, count;
-
-version (unittest) package {
-	struct User {
-		string name;
-		int age;
-	}
-
-	@as("msg") struct Message {
-		@as("rowid") int id;
-		string contents;
-	}
-
-	alias Q = SQLBuilder;
-}
-
-/// Get the sqlname of `T`
-public import database.util : SQLName = KeyName;
-
-///
-unittest {
-	static assert(SQLName!User == "User");
-	static assert(SQLName!Message == "msg");
-}
-
-/// Generate a column name given a field in T.
-template ColumnName(T, string field) if (isAggregateType!T) {
-	enum ColumnName = SQLName!(__traits(getMember, T, field), field);
-}
-
-/// Return the qualifed column name of the given struct field
-enum ColumnName(alias field, bool brackets = false) =
-	quote(SQLName!(__traits(parent, field))) ~ (brackets ?
-			'(' ~ quote(SQLName!field) ~ ')' : '.' ~ quote(SQLName!field));
-
-///
-unittest {
-	@as("msg") struct Message {
-		@as("txt") string contents;
-	}
-
-	static assert(ColumnName!(User, "age") == "age");
-	static assert(ColumnName!(Message.contents) == `"msg"."txt"`);
-	static assert(ColumnName!(User.age) == `"User"."age"`);
-	static assert(ColumnName!(User.age, true) == `"User"("age")`);
-}
-
-template ColumnNames(T) {
-	enum colName(string NAME) = ColumnName!(T, NAME);
-	enum ColumnNames = staticMap!(colName, FieldNameTuple!T);
-}
-
-/// get column count except "rowid" field
-template ColumnCount(T) {
-	enum colNames = ColumnNames!T,
-		indexOfRowid = staticIndexOf!("rowid", colNames);
-	static if (~indexOfRowid)
-		enum ColumnCount = colNames.length - 1;
-	else
-		enum ColumnCount = colNames.length;
-}
-
-template SQLTypeOf(T) {
-	static if (isSomeString!T)
-		enum SQLTypeOf = "TEXT";
-	else static if (isFloatingPoint!T) {
-		static if (T.sizeof == 4)
-			enum SQLTypeOf = "REAL";
-		else
-			enum SQLTypeOf = "DOUBLE PRECISION";
-	} else static if (isIntegral!T) {
-		static if (T.sizeof <= 2)
-			enum SQLTypeOf = "SMALLINT";
-		else static if (T.sizeof == 4)
-			enum SQLTypeOf = "INT";
-		else
-			enum SQLTypeOf = "BIGINT";
-	} else static if (isBoolean!T)
-		enum SQLTypeOf = "BOOLEAN";
-	else static if (!isSomeString!T && !isScalarType!T) {
-		version (USE_PGSQL) {
-			alias U = Unqual!T;
-			static if (is(U == Date))
-				enum SQLTypeOf = "date";
-			else static if (is(U == DateTime))
-				enum SQLTypeOf = "timestamp";
-			else static if (is(U == SysTime))
-				enum SQLTypeOf = "timestamp with time zone";
-			else static if (is(U == TimeOfDay))
-				enum SQLTypeOf = "time";
-			else static if (is(U == Duration))
-				enum SQLTypeOf = "interval";
-			else
-				enum SQLTypeOf = "bytea";
-		} else static if (is(U == Date))
-			enum SQLTypeOf = "INT";
-		else static if (is(U == DateTime) || is(U == Duration))
-			enum SQLTypeOf = "BIGINT";
-		else
-			enum SQLTypeOf = "BLOB";
-	} else
-		static assert(0, "Unsupported SQLType '" ~ T.stringof ~ '.');
-}
+public import database.traits : SQLName;
 
 enum State {
 	none = "",
@@ -139,14 +37,6 @@ enum OR {
 	Rollback = "OR ROLLBACK "
 }
 
-enum Clause(string name, prevStates...) =
-	"SB " ~ name ~ "(S)(S expr) if(isSomeString!S)
-		in(state == State."
-	~ [prevStates].join(" || state == State.") ~ `, "Wrong state " ~ state) {
-		sql ~= (state = State.`
-	~ name ~ ") ~ expr;
-		return this;}";
-
 @safe:
 
 string placeholders(size_t x) pure nothrow {
@@ -166,16 +56,6 @@ struct SQLBuilder {
 	string sql;
 	alias sql this;
 	State state;
-private:
-
-	alias SB = SQLBuilder;
-
-	template make(string prefix, string suffix, T) if (isAggregateType!T) {
-		mixin getSQLFields!(prefix, suffix, T);
-		enum make = sql!sqlFields;
-	}
-
-public:
 
 	this(string sql, State STATE = State.none) {
 		this.sql = STATE.startsWithWhite ? sql : STATE ~ sql;
@@ -183,65 +63,14 @@ public:
 	}
 
 	static SB create(T)() if (isAggregateType!T) {
-		import std.conv : to;
-
-		string s;
-		static foreach (A; __traits(getAttributes, T))
-			static if (is(typeof(A)))
-				static if (isSomeString!(typeof(A)))
-					static if (A.length) {
-						static if (A.startsWithWhite)
-							s ~= A;
-						else
-							s ~= ' ' ~ A;
-					}
-		alias FIELDS = Fields!T;
-		string[] fields, keys, pkeys;
-
-		static foreach (I, colName; ColumnNames!T)
-			static if (colName.length) {
-				{
-					static if (colName != "rowid") {
-						string field = quote(colName) ~ ' ',
-						type = SQLTypeOf!(FIELDS[I]),
-						constraints;
-					}
-					static foreach (A; __traits(getAttributes, T.tupleof[I]))
-						static if (is(typeof(A) == sqlkey)) {
-							static if (A.key.length)
-								keys ~= "FOREIGN KEY(" ~ quote(colName) ~ ") REFERENCES " ~ A.key;
-							else
-								pkeys ~= colName;
-						} else static if (colName != "rowid" && is(typeof(A) == sqltype))
-							type = A.type;
-						else static if (is(typeof(A)))
-							static if (isSomeString!(typeof(A)))
-								static if (A.length) {
-									static if (A.startsWithWhite)
-										constraints ~= A;
-									else
-										constraints ~= ' ' ~ A;
-								}
-					static if (colName != "rowid") {
-						field ~= type ~ constraints;
-						enum MEMBER = T.init.tupleof[I];
-						if (MEMBER != FIELDS[I].init)
-							field ~= " default " ~ quote(MEMBER.to!string, '\'');
-						fields ~= field;
-					}
-				}
-			}
-		if (pkeys)
-			keys ~= "PRIMARY KEY(" ~ pkeys.quoteJoin() ~ ')';
-
-		return SB(quote(SQLName!T) ~ '(' ~ join(fields ~ keys, ',') ~ ')'
-				~ s, State.createNX);
+		enum sql = createTable!T;
+		return sql;
 	}
 
 	///
 	unittest {
 		assert(SQLBuilder.create!User == `CREATE TABLE IF NOT EXISTS "User"("name" TEXT,"age" INT)`);
-		static assert(!__traits(compiles, SQLBuilder().create!int));
+		static assert(!__traits(compiles, SQLBuilder.create!int));
 	}
 
 	alias insert(T) = insert!(OR.None, T);
@@ -257,8 +86,11 @@ public:
 	}
 
 	///
-	static SB select(STRING...)() if (STRING.length)
-		=> SB([STRING].join(','), State.select);
+	static SB select(Fields...)() if (Fields.length) {
+		enum sql = [Fields].join(',');
+		return SB(sql, State.select);
+	}
+
 	///
 	unittest {
 		assert(SQLBuilder.select!("only_one") == "SELECT only_one");
@@ -266,12 +98,12 @@ public:
 	}
 
 	///
-	static SB selectAllFrom(STRUCTS...)() if (allSatisfy!(isAggregateType, STRUCTS)) {
+	static SB selectAllFrom(Tables...)() if (allSatisfy!(isAggregateType, Tables)) {
 		string[] fields, tables;
-		static foreach (S; STRUCTS) {
+		foreach (S; Tables) {
 			{
 				enum tblName = SQLName!S;
-				static foreach (N; FieldNameTuple!S)
+				foreach (N; FieldNameTuple!S)
 					fields ~= tblName.quote ~ '.' ~ ColumnName!(S, N).quote;
 
 				tables ~= tblName;
@@ -287,16 +119,16 @@ public:
 	}
 
 	///
-	mixin(Clause!("from", "select"));
+	mixin(Clause!("from", "set", "select"));
 
 	///
-	SB from(Strings...)(Strings tables)
-	if (Strings.length > 1 && allSatisfy!(isSomeString, Strings))
+	SB from(Tables...)(Tables tables)
+	if (Tables.length > 1 && allSatisfy!(isSomeString, Tables))
 		=> from([tables].join(','));
 
 	///
-	SB from(TABLES...)() if (TABLES.length && allSatisfy!(isAggregateType, TABLES))
-		=> from([staticMap!(SQLName, TABLES)].quoteJoin());
+	SB from(Tables...)() if (Tables.length && allSatisfy!(isAggregateType, Tables))
+		=> from([staticMap!(SQLName, Tables)].quoteJoin());
 
 	///
 	mixin(Clause!("set", "update"));
@@ -310,31 +142,31 @@ public:
 		=> SB(or ~ SQLName!T, State.update);
 
 	///
-	static SB updateAll(T, OR or = OR.None)() if (isAggregateType!T) => SQLBuilder(
-		make!("UPDATE " ~ or ~ SQLName!T ~
-			" SET ", "=?", T), State.set);
+	static SB updateAll(T, OR or = OR.None)() if (isAggregateType!T)
+		=> SB(make!("UPDATE " ~ or ~ SQLName!T ~ " SET ", "=?", T), State.set);
 
 	///
 	unittest {
 		assert(SQLBuilder.update("User") == "UPDATE User");
 		assert(SQLBuilder.update!User == "UPDATE User");
-		assert(SQLBuilder.updateAll!User == `UPDATE User SET "name"=?,"age"=?`);
+		assert(SQLBuilder.updateAll!User == `UPDATE User SET "name"=$1,"age"=$2`);
 	}
 
 	///
 	mixin(Clause!("where", "set", "from", "del"));
 
 	///
-	static SB del(TABLE)() if (isAggregateType!TABLE)
-		=> del(SQLName!TABLE);
+	static SB del(Table)() if (isAggregateType!Table)
+		=> del(SQLName!Table);
 
 	///
-	static SB del(S)(S tablename) if (isSomeString!S)
-		=> SB(tablename, State.del);
+	static SB del(S)(S table) if (isSomeString!S)
+		=> SB(table, State.del);
 
 	///
 	unittest {
-		SQLBuilder.del!User.where("name=?");
+		assert(SQLBuilder.del!User.where("name=$1") ==
+				`DELETE FROM User WHERE name=$1`);
 	}
 
 	///
@@ -356,6 +188,21 @@ public:
 		sql ~= expr;
 		return this;
 	}
+
+private:
+	enum Clause(string name, prevStates...) =
+		"SB " ~ name ~ "(S)(S expr) if(isSomeString!S)
+		in(state == State."
+		~ [prevStates].join(
+			" || state == State.") ~ `, "Wrong SQL: ` ~ name ~ ` after " ~ state) {
+		sql ~= (state = State.`
+		~ name ~ ") ~ expr;
+		return this;}";
+
+	template make(string prefix, string suffix, T) if (isAggregateType!T) {
+		mixin getSQLFields!(prefix, suffix, T);
+		enum make = sql!sqlFields;
+	}
 }
 
 ///
@@ -366,15 +213,14 @@ unittest {
 		int age;
 	}
 
-	assert(Q.create!User == `CREATE TABLE IF NOT EXISTS "User"("name" TEXT,"age" INT)`);
+	assert(SB.create!User == `CREATE TABLE IF NOT EXISTS "User"("name" TEXT,"age" INT)`);
 
-	auto qb0 = Q.select!"name"
+	auto q = SB.select!"name"
 		.from!User
-		.where("age=?");
+		.where("age=$1");
 
-	// The properties `sql` and `bind` can be used to access the generated sql and the
-	// bound parameters
-	assert(qb0.sql == `SELECT name FROM "User" WHERE age=?`);
+	// The properties `sql` can be used to access the generated sql
+	assert(q.sql == `SELECT name FROM "User" WHERE age=$1`);
 
 	/// We can decorate structs and fields to give them different names in the database.
 	@as("msg") struct Message {
@@ -385,10 +231,10 @@ unittest {
 	// Note that virtual "rowid" field is handled differently -- it will not be created
 	// by create(), and not inserted into by insert()
 
-	assert(Q.create!Message == `CREATE TABLE IF NOT EXISTS "msg"("contents" TEXT)`);
+	assert(SB.create!Message == `CREATE TABLE IF NOT EXISTS "msg"("contents" TEXT)`);
 
-	auto qb = Q.insert!Message;
-	assert(qb == `INSERT INTO "msg"("contents") VALUES(?)`);
+	auto q2 = SB.insert!Message;
+	assert(q2 == `INSERT INTO "msg"("contents") VALUES($1)`);
 }
 
 unittest {
@@ -399,45 +245,78 @@ unittest {
 
 	// Make sure all these generate the same sql statement
 	auto sql = [
-		Q.select!(`"msg"."rowid"`, `"msg"."contents"`).from(`"msg"`)
-			.where(`"msg"."rowid"=?`).sql,
-		Q.select!(`"msg"."rowid"`, `"msg"."contents"`)
+		SB.select!(`"msg"."rowid"`, `"msg"."contents"`).from(`"msg"`)
+			.where(`"msg"."rowid"=$1`).sql,
+		SB.select!(`"msg"."rowid"`, `"msg"."contents"`)
 			.from!Message
-			.where(C!(Message.id) ~ "=?").sql,
-		Q.select!(C!(Message.id), C!(Message.contents))
+			.where(C!(Message.id) ~ "=$1").sql,
+		SB.select!(C!(Message.id), C!(Message.contents))
 			.from!Message
-			.where(`"msg"."rowid"=?`).sql,
-		Q.selectAllFrom!Message.where(`"msg"."rowid"=?`).sql
+			.where(`"msg"."rowid"=$1`).sql,
+		SB.selectAllFrom!Message.where(`"msg"."rowid"=$1`).sql
 	];
 	assert(count(uniq(sql)) == 1);
 }
 
-S quote(S)(S s, char q = '"') if (isSomeString!S) {
-	version (NO_SQLQUOTE)
-		return s;
-	else
-		return q ~ s ~ q;
-}
+private:
 
-S quoteJoin(S, bool leaveTail = false)(S[] s, char sep = ',', char q = '"')
-if (isSomeString!S) {
-	auto res = appender!S;
-	for (size_t i; i < s.length; i++) {
-		version (NO_SQLQUOTE)
-			res ~= s[i];
-		else {
-			res ~= q;
-			res ~= s[i];
-			res ~= q;
+bool startsWithWhite(S)(S s)
+	=> s.length && s[0].isWhite;
+
+SB createTable(T)() {
+	import std.conv : to;
+
+	string s;
+	static foreach (A; __traits(getAttributes, T))
+		static if (is(typeof(A)))
+			static if (isSomeString!(typeof(A)))
+				static if (A.length) {
+					static if (A.startsWithWhite)
+						s ~= A;
+					else
+						s ~= ' ' ~ A;
+				}
+	alias FIELDS = Fields!T;
+	string[] fields, keys, pkeys;
+
+	static foreach (I, colName; ColumnNames!T)
+		static if (colName.length) {
+			{
+				static if (colName != "rowid") {
+					string field = quote(colName) ~ ' ',
+					type = SQLTypeOf!(FIELDS[I]),
+					constraints;
+				}
+				static foreach (A; __traits(getAttributes, T.tupleof[I]))
+					static if (is(typeof(A) == sqlkey)) {
+						static if (A.key.length)
+							keys ~= "FOREIGN KEY(" ~ quote(colName) ~ ") REFERENCES " ~ A.key;
+						else
+							pkeys ~= colName;
+					} else static if (colName != "rowid" && is(typeof(A) == sqltype))
+						type = A.type;
+					else static if (is(typeof(A)))
+						static if (isSomeString!(typeof(A)))
+							static if (A.length) {
+								static if (A.startsWithWhite)
+									constraints ~= A;
+								else
+									constraints ~= ' ' ~ A;
+							}
+				static if (colName != "rowid") {
+					field ~= type ~ constraints;
+					enum member = T.init.tupleof[I];
+					if (member != FIELDS[I].init)
+						field ~= " default " ~ quote(member.to!string, '\'');
+					fields ~= field;
+				}
+			}
 		}
-		if (leaveTail || i + 1 < s.length)
-			res ~= sep;
-	}
-	return res[];
+	if (pkeys.length)
+		keys ~= "PRIMARY KEY(" ~ quoteJoin(pkeys) ~ ')';
+
+	return SB(quote(SQLName!T) ~ '(' ~ join(fields ~ keys, ',') ~ ')'
+			~ s, State.createNX);
 }
 
-private bool startsWithWhite(S)(S s) {
-	import std.ascii;
-
-	return s.length && s[0].isWhite;
-}
+alias SB = SQLBuilder;
