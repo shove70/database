@@ -6,17 +6,8 @@ import database.postgresql.db,
 	database.postgresql.protocol,
 	database.postgresql.row,
 	database.postgresql.type,
-	database.util,
-	std.algorithm,
-	std.array,
-	std.experimental.logger,
-	std.format,
-	std.string,
-	std.traits;
+	database.util;
 // dfmt on
-import std.regex : ctRegex, matchFirst;
-import std.uni : sicmp;
-import std.utf : decode, UseReplacementDchar;
 
 alias Socket = DBSocket!PgSQLConnectionException;
 
@@ -49,8 +40,13 @@ private struct ServerInfo {
 
 @safe:
 class Connection {
-	import std.datetime;
-	import std.functional;
+	import std.datetime,
+	std.format,
+	std.functional,
+	std.logger,
+	std.range,
+	std.string,
+	std.traits;
 
 	Socket socket;
 
@@ -498,6 +494,8 @@ private:
 
 	void eatCommandComplete(ref InputPacket packet)
 	in (packet.type == InputMessageType.CommandComplete) {
+		import std.algorithm : swap;
+
 		auto tag = packet.eatz();
 		auto p = tag.indexOf(' ') + 1;
 		auto cmd = tag[0 .. p];
