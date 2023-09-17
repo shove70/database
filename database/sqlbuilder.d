@@ -7,7 +7,7 @@ import
 	std.range,
 	std.traits;
 // dfmt on
-import std.string : join, count;
+import std.string;
 public import database.traits : SQLName;
 
 enum State {
@@ -22,6 +22,7 @@ enum State {
 	limit = " LIMIT ",
 	offset = " OFFSET ",
 	orderBy = " ORDER BY ",
+	returning = " RETURNING ",
 	select = "SELECT ",
 	set = " SET ",
 	update = "UPDATE ",
@@ -87,14 +88,21 @@ struct SQLBuilder {
 
 	///
 	static SB select(Fields...)() if (Fields.length) {
-		enum sql = [Fields].join(',');
-		return SB(sql, State.select);
+		static if (allSatisfy!(isString, Fields)) {
+			enum sql = [Fields].join(',');
+			return SB(sql, State.select);
+		} else {
+			enum sql = quoteJoin([staticMap!(SQLName, Fields)]);
+			return SB(sql, State.select).from(NoDuplicates!(staticMap!(ParentName, Fields)));
+		}
 	}
 
 	///
 	unittest {
 		assert(SQLBuilder.select!("only_one") == "SELECT only_one");
 		assert(SQLBuilder.select!("hey", "you") == "SELECT hey,you");
+		assert(SQLBuilder.select!(User.name) == `SELECT "name" FROM "User"`);
+		assert(SQLBuilder.select!(User.name, User.age) == `SELECT "name","age" FROM "User"`);
 	}
 
 	///
@@ -110,7 +118,7 @@ struct SQLBuilder {
 			}
 		}
 		return SB("SELECT " ~ fields.join(',') ~ " FROM "
-				~ tables.quoteJoin(), State.from);
+				~ quoteJoin(tables), State.from);
 	}
 	///
 	unittest {
@@ -123,33 +131,34 @@ struct SQLBuilder {
 
 	///
 	SB from(Tables...)(Tables tables)
-	if (Tables.length > 1 && allSatisfy!(isSomeString, Tables))
+	if (Tables.length > 1 && allSatisfy!(isString, Tables))
 		=> from([tables].join(','));
 
 	///
 	SB from(Tables...)() if (Tables.length && allSatisfy!(isAggregateType, Tables))
-		=> from([staticMap!(SQLName, Tables)].quoteJoin());
+		=> from(quoteJoin([staticMap!(SQLName, Tables)]));
 
 	///
 	mixin(Clause!("set", "update"));
 
 	///
-	static SB update(OR or = OR.None, S)(S table) if (isSomeString!S)
+	static SB update(OR or = OR.None, S:
+		const(char)[])(S table)
 		=> SB(or ~ table, State.update);
 
 	///
 	static SB update(T, OR or = OR.None)() if (isAggregateType!T)
-		=> SB(or ~ SQLName!T, State.update);
+		=> SB(or ~ quote(SQLName!T), State.update);
 
 	///
 	static SB updateAll(T, OR or = OR.None)() if (isAggregateType!T)
-		=> SB(make!("UPDATE " ~ or ~ SQLName!T ~ " SET ", "=?", T), State.set);
+		=> SB(make!("UPDATE " ~ or ~ quote(SQLName!T) ~ " SET ", "=?", T), State.set);
 
 	///
 	unittest {
-		assert(SQLBuilder.update("User") == "UPDATE User");
-		assert(SQLBuilder.update!User == "UPDATE User");
-		assert(SQLBuilder.updateAll!User == `UPDATE User SET "name"=$1,"age"=$2`);
+		assert(SQLBuilder.update("User") == `UPDATE User`);
+		assert(SQLBuilder.update!User == `UPDATE "User"`);
+		assert(SQLBuilder.updateAll!User == `UPDATE "User" SET "name"=$1,"age"=$2`);
 	}
 
 	///
@@ -157,17 +166,22 @@ struct SQLBuilder {
 
 	///
 	static SB del(Table)() if (isAggregateType!Table)
-		=> del(SQLName!Table);
+		=> del(quote(SQLName!Table));
 
 	///
-	static SB del(S)(S table) if (isSomeString!S)
+	static SB del(S : const(char)[])(S table)
 		=> SB(table, State.del);
 
 	///
 	unittest {
 		assert(SQLBuilder.del!User.where("name=$1") ==
-				`DELETE FROM User WHERE name=$1`);
+				`DELETE FROM "User" WHERE name=$1`);
+		assert(SQLBuilder.del!User.returning("*") ==
+				`DELETE FROM "User" RETURNING *`);
 	}
+
+	///
+	mixin(Clause!("using", "del"));
 
 	///
 	mixin(Clause!("groupBy", "from", "where"));
@@ -184,19 +198,21 @@ struct SQLBuilder {
 	///
 	mixin(Clause!("offset", "limit"));
 
-	SB opCall(S)(S expr) if (isSomeString!S) {
+	///
+	mixin(Clause!("returning"));
+
+	SB opCall(S : const(char)[])(S expr) {
 		sql ~= expr;
 		return this;
 	}
 
 private:
 	enum Clause(string name, prevStates...) =
-		"SB " ~ name ~ "(S)(S expr) if(isSomeString!S)
-		in(state == State."
-		~ [prevStates].join(
-			" || state == State.") ~ `, "Wrong SQL: ` ~ name ~ ` after " ~ state) {
-		sql ~= (state = State.`
-		~ name ~ ") ~ expr;
+		"SB " ~ name ~ "(S : const(char)[])(S expr)" ~
+		(prevStates.length ? "in(state == State." ~ [prevStates].join!(string[])(
+				" || state == State.") ~ `, "Wrong SQL: ` ~ name ~ ` after " ~ state)` : "")
+		~ "{ sql ~= " ~ (__traits(hasMember, State, name) ?
+				"(state = State." ~ name ~ ")" : `" ` ~ name.toUpper ~ ` "`) ~ " ~ expr;
 		return this;}";
 
 	template make(string prefix, string suffix, T) if (isAggregateType!T) {
@@ -260,6 +276,8 @@ unittest {
 
 private:
 
+enum isString(alias x) = __traits(compiles, { const(char)[] s = x; });
+
 bool startsWithWhite(S)(S s)
 	=> s.length && s[0].isWhite;
 
@@ -268,14 +286,13 @@ SB createTable(T)() {
 
 	string s;
 	static foreach (A; __traits(getAttributes, T))
-		static if (is(typeof(A)))
-			static if (isSomeString!(typeof(A)))
-				static if (A.length) {
-					static if (A.startsWithWhite)
-						s ~= A;
-					else
-						s ~= ' ' ~ A;
-				}
+		static if (is(typeof(A) : const(char)[]))
+			static if (A.length) {
+				static if (A.startsWithWhite)
+					s ~= A;
+				else
+					s ~= ' ' ~ A;
+			}
 	alias FIELDS = Fields!T;
 	string[] fields, keys, pkeys;
 
@@ -295,14 +312,13 @@ SB createTable(T)() {
 							pkeys ~= colName;
 					} else static if (colName != "rowid" && is(typeof(A) == sqltype))
 						type = A.type;
-					else static if (is(typeof(A)))
-						static if (isSomeString!(typeof(A)))
-							static if (A.length) {
-								static if (A.startsWithWhite)
-									constraints ~= A;
-								else
-									constraints ~= ' ' ~ A;
-							}
+					else static if (is(typeof(A) : const(char)[]))
+						static if (A.length) {
+							static if (A.startsWithWhite)
+								constraints ~= A;
+							else
+								constraints ~= ' ' ~ A;
+						}
 				static if (colName != "rowid") {
 					field ~= type ~ constraints;
 					enum member = T.init.tupleof[I];
@@ -319,4 +335,4 @@ SB createTable(T)() {
 			~ s, State.createNX);
 }
 
-alias SB = SQLBuilder;
+package(database) alias SB = SQLBuilder;
