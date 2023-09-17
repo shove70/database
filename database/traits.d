@@ -184,6 +184,64 @@ template isReadableDataMember(alias M) {
 		enum isReadableDataMember = isVisible!M;
 }
 
+/// Sort tables based on dependencies
+template sortTable(T...) if (T.length <= uint.max) {
+	import std.meta;
+
+	enum N = cast(uint)T.length;
+
+	alias sortTable = AliasSeq!();
+	static foreach (i; sort())
+		sortTable = AliasSeq!(sortTable, T[i]);
+
+	auto sort()
+	out (result; result.length == N) {
+		import std.string;
+
+		uint[string] nameToIndex;
+		foreach (i, Table; T)
+			nameToIndex[quote(SQLName!Table)] = i;
+		uint[][N] g;
+		uint[N] in_;
+		foreach (i, Table; T) {
+			static foreach (j, _; Table.tupleof)
+				static foreach (S; __traits(getAttributes, Table.tupleof[j]))
+					static if (is(typeof(S) == sqlkey) && S.key.length) {
+						g[nameToIndex[S.key[0 .. S.key.indexOf('(')]]] ~= i;
+						in_[i]++;
+					}
+		}
+		uint[] q, result;
+		foreach (i; 0 .. N)
+			if (!in_[i])
+				q ~= i;
+		while (q.length) {
+			uint u = q[0];
+			q = q[1 .. $];
+			result ~= u;
+			foreach (v; g[u])
+				if (--in_[v] == 0)
+					q ~= v;
+		}
+		return result;
+	}
+}
+
+/// Returns whether table B depends on table A
+template dependsOn(A, B) {
+	import std.string : startsWith;
+
+	enum prefix = quote(SQLName!A) ~ '(';
+	static foreach (j, _; B.tupleof)
+		static foreach (S; __traits(getAttributes, B.tupleof[j]))
+			static if (!is(typeof(dependsOn) == bool) && is(typeof(S) == sqlkey))
+				static if (S.key.startsWith(prefix)) {
+					enum dependsOn = true;
+				}
+	static if (!is(typeof(dependsOn) == bool))
+		enum dependsOn = false;
+}
+
 private:
 
 enum fitsInString(T) =
