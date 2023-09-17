@@ -80,8 +80,7 @@ template ColumnName(T, string field) if (isAggregateType!T) {
 
 /// Return the qualifed column name of the given struct field
 enum ColumnName(alias field, bool brackets = false) =
-	quote(SQLName!(__traits(parent, field))) ~ (brackets ?
-			'(' ~ quote(SQLName!field) ~ ')' : '.' ~ quote(SQLName!field));
+	ParentName!field ~ (brackets ? '(' ~ quote(SQLName!field) ~ ')' : '.' ~ quote(SQLName!field));
 
 ///
 unittest {
@@ -249,6 +248,8 @@ enum fitsInString(T) =
 			is(T == string));
 
 package(database):
+
+enum ParentName(alias field) = quote(SQLName!(__traits(parent, field)));
 
 alias CutOut(size_t I, T...) = AliasSeq!(T[0 .. I], T[I + 1 .. $]);
 

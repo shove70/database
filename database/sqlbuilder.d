@@ -88,14 +88,21 @@ struct SQLBuilder {
 
 	///
 	static SB select(Fields...)() if (Fields.length) {
-		enum sql = [Fields].join(',');
-		return SB(sql, State.select);
+		static if (allSatisfy!(isString, Fields)) {
+			enum sql = [Fields].join(',');
+			return SB(sql, State.select);
+		} else {
+			enum sql = quoteJoin([staticMap!(SQLName, Fields)]);
+			return SB(sql, State.select).from(NoDuplicates!(staticMap!(ParentName, Fields)));
+		}
 	}
 
 	///
 	unittest {
 		assert(SQLBuilder.select!("only_one") == "SELECT only_one");
 		assert(SQLBuilder.select!("hey", "you") == "SELECT hey,you");
+		assert(SQLBuilder.select!(User.name) == `SELECT "name" FROM "User"`);
+		assert(SQLBuilder.select!(User.name, User.age) == `SELECT "name","age" FROM "User"`);
 	}
 
 	///
@@ -111,7 +118,7 @@ struct SQLBuilder {
 			}
 		}
 		return SB("SELECT " ~ fields.join(',') ~ " FROM "
-				~ tables.quoteJoin(), State.from);
+				~ quoteJoin(tables), State.from);
 	}
 	///
 	unittest {
@@ -124,12 +131,12 @@ struct SQLBuilder {
 
 	///
 	SB from(Tables...)(Tables tables)
-	if (Tables.length > 1 && allSatisfy!(isSomeString, Tables))
+	if (Tables.length > 1 && allSatisfy!(isString, Tables))
 		=> from([tables].join(','));
 
 	///
 	SB from(Tables...)() if (Tables.length && allSatisfy!(isAggregateType, Tables))
-		=> from([staticMap!(SQLName, Tables)].quoteJoin());
+		=> from(quoteJoin([staticMap!(SQLName, Tables)]));
 
 	///
 	mixin(Clause!("set", "update"));
@@ -268,6 +275,8 @@ unittest {
 }
 
 private:
+
+enum isString(alias x) = __traits(compiles, { const(char)[] s = x; });
 
 bool startsWithWhite(S)(S s)
 	=> s.length && s[0].isWhite;
