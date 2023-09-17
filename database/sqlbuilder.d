@@ -134,22 +134,22 @@ struct SQLBuilder {
 	mixin(Clause!("set", "update"));
 
 	///
-	static SB update(OR or = OR.None, S)(S table) if (isSomeString!S)
+	static SB update(OR or = OR.None, S : const(char)[])(S table)
 		=> SB(or ~ table, State.update);
 
 	///
 	static SB update(T, OR or = OR.None)() if (isAggregateType!T)
-		=> SB(or ~ SQLName!T, State.update);
+		=> SB(or ~ quote(SQLName!T), State.update);
 
 	///
 	static SB updateAll(T, OR or = OR.None)() if (isAggregateType!T)
-		=> SB(make!("UPDATE " ~ or ~ SQLName!T ~ " SET ", "=?", T), State.set);
+		=> SB(make!("UPDATE " ~ or ~ quote(SQLName!T) ~ " SET ", "=?", T), State.set);
 
 	///
 	unittest {
-		assert(SQLBuilder.update("User") == "UPDATE User");
-		assert(SQLBuilder.update!User == "UPDATE User");
-		assert(SQLBuilder.updateAll!User == `UPDATE User SET "name"=$1,"age"=$2`);
+		assert(SQLBuilder.update("User") == `UPDATE User`);
+		assert(SQLBuilder.update!User == `UPDATE "User"`);
+		assert(SQLBuilder.updateAll!User == `UPDATE "User" SET "name"=$1,"age"=$2`);
 	}
 
 	///
@@ -157,16 +157,16 @@ struct SQLBuilder {
 
 	///
 	static SB del(Table)() if (isAggregateType!Table)
-		=> del(SQLName!Table);
+		=> del(quote(SQLName!Table));
 
 	///
-	static SB del(S)(S table) if (isSomeString!S)
+	static SB del(S : const(char)[])(S table)
 		=> SB(table, State.del);
 
 	///
 	unittest {
 		assert(SQLBuilder.del!User.where("name=$1") ==
-				`DELETE FROM User WHERE name=$1`);
+				`DELETE FROM "User" WHERE name=$1`);
 	}
 
 	///
@@ -184,14 +184,14 @@ struct SQLBuilder {
 	///
 	mixin(Clause!("offset", "limit"));
 
-	SB opCall(S)(S expr) if (isSomeString!S) {
+	SB opCall(S : const(char)[])(S expr) {
 		sql ~= expr;
 		return this;
 	}
 
 private:
 	enum Clause(string name, prevStates...) =
-		"SB " ~ name ~ "(S)(S expr) if(isSomeString!S)
+		"SB " ~ name ~ "(S : const(char)[])(S expr)
 		in(state == State."
 		~ [prevStates].join(
 			" || state == State.") ~ `, "Wrong SQL: ` ~ name ~ ` after " ~ state) {
@@ -268,14 +268,13 @@ SB createTable(T)() {
 
 	string s;
 	static foreach (A; __traits(getAttributes, T))
-		static if (is(typeof(A)))
-			static if (isSomeString!(typeof(A)))
-				static if (A.length) {
-					static if (A.startsWithWhite)
-						s ~= A;
-					else
-						s ~= ' ' ~ A;
-				}
+		static if (is(typeof(A) : const(char)[]))
+			static if (A.length) {
+				static if (A.startsWithWhite)
+					s ~= A;
+				else
+					s ~= ' ' ~ A;
+			}
 	alias FIELDS = Fields!T;
 	string[] fields, keys, pkeys;
 
@@ -295,8 +294,7 @@ SB createTable(T)() {
 							pkeys ~= colName;
 					} else static if (colName != "rowid" && is(typeof(A) == sqltype))
 						type = A.type;
-					else static if (is(typeof(A)))
-						static if (isSomeString!(typeof(A)))
+					else static if (is(typeof(A) : const(char)[]))
 							static if (A.length) {
 								static if (A.startsWithWhite)
 									constraints ~= A;
@@ -319,4 +317,4 @@ SB createTable(T)() {
 			~ s, State.createNX);
 }
 
-alias SB = SQLBuilder;
+package(database) alias SB = SQLBuilder;

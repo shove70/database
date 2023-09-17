@@ -46,7 +46,6 @@ version (unittest) package template TEST(string dbname = "", T = SQLite3) {
 
 package {
 	alias SQLEx = SQLiteException;
-	alias SB = SQLBuilder;
 	alias toz = toStringz;
 
 	void checkError(sqlite3* db, string prefix, int rc,
