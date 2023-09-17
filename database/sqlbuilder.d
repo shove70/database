@@ -7,7 +7,7 @@ import
 	std.range,
 	std.traits;
 // dfmt on
-import std.string : join, count;
+import std.string;
 public import database.traits : SQLName;
 
 enum State {
@@ -22,6 +22,7 @@ enum State {
 	limit = " LIMIT ",
 	offset = " OFFSET ",
 	orderBy = " ORDER BY ",
+	returning = " RETURNING ",
 	select = "SELECT ",
 	set = " SET ",
 	update = "UPDATE ",
@@ -134,7 +135,8 @@ struct SQLBuilder {
 	mixin(Clause!("set", "update"));
 
 	///
-	static SB update(OR or = OR.None, S : const(char)[])(S table)
+	static SB update(OR or = OR.None, S:
+		const(char)[])(S table)
 		=> SB(or ~ table, State.update);
 
 	///
@@ -167,7 +169,12 @@ struct SQLBuilder {
 	unittest {
 		assert(SQLBuilder.del!User.where("name=$1") ==
 				`DELETE FROM "User" WHERE name=$1`);
+		assert(SQLBuilder.del!User.returning("*") ==
+				`DELETE FROM "User" RETURNING *`);
 	}
+
+	///
+	mixin(Clause!("using", "del"));
 
 	///
 	mixin(Clause!("groupBy", "from", "where"));
@@ -184,6 +191,9 @@ struct SQLBuilder {
 	///
 	mixin(Clause!("offset", "limit"));
 
+	///
+	mixin(Clause!("returning"));
+
 	SB opCall(S : const(char)[])(S expr) {
 		sql ~= expr;
 		return this;
@@ -191,12 +201,11 @@ struct SQLBuilder {
 
 private:
 	enum Clause(string name, prevStates...) =
-		"SB " ~ name ~ "(S : const(char)[])(S expr)
-		in(state == State."
-		~ [prevStates].join(
-			" || state == State.") ~ `, "Wrong SQL: ` ~ name ~ ` after " ~ state) {
-		sql ~= (state = State.`
-		~ name ~ ") ~ expr;
+		"SB " ~ name ~ "(S : const(char)[])(S expr)" ~
+		(prevStates.length ? "in(state == State." ~ [prevStates].join!(string[])(
+				" || state == State.") ~ `, "Wrong SQL: ` ~ name ~ ` after " ~ state)` : "")
+		~ "{ sql ~= " ~ (__traits(hasMember, State, name) ?
+				"(state = State." ~ name ~ ")" : `" ` ~ name.toUpper ~ ` "`) ~ " ~ expr;
 		return this;}";
 
 	template make(string prefix, string suffix, T) if (isAggregateType!T) {
@@ -295,12 +304,12 @@ SB createTable(T)() {
 					} else static if (colName != "rowid" && is(typeof(A) == sqltype))
 						type = A.type;
 					else static if (is(typeof(A) : const(char)[]))
-							static if (A.length) {
-								static if (A.startsWithWhite)
-									constraints ~= A;
-								else
-									constraints ~= ' ' ~ A;
-							}
+						static if (A.length) {
+							static if (A.startsWithWhite)
+								constraints ~= A;
+							else
+								constraints ~= ' ' ~ A;
+						}
 				static if (colName != "rowid") {
 					field ~= type ~ constraints;
 					enum member = T.init.tupleof[I];

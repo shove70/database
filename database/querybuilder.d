@@ -8,6 +8,8 @@ import database.util;
 
 enum Placeholder;
 
+@safe:
+
 alias del(T) = QueryBuilder!(SB.del!T);
 
 alias select(T...) = QueryBuilder!(SB.select!T);
@@ -48,7 +50,7 @@ struct QueryBuilder(SB sb, Args...) {
 	alias all this;
 }
 
-@safe unittest {
+unittest {
 	@snakeCase
 	struct User {
 		@sqlkey() uint id;
