@@ -101,20 +101,18 @@ struct MySQLValue {
 		}
 	}
 
-	this(T)(T value) if (isIntegral!T || isBoolean!T) {
-		alias UT = Unqual!T;
-
-		static if (is(UT == long) || is(UT == ulong)) {
+	this(T)(T value) if (__traits(isIntegral, T)) {
+		static if (T.sizeof == 8) {
 			type_ = ColumnTypes.MYSQL_TYPE_LONGLONG;
-		} else static if (is(UT == int) || is(UT == uint) || is(UT == dchar)) {
+		} else static if (T.sizeof == 4) {
 			type_ = ColumnTypes.MYSQL_TYPE_LONG;
-		} else static if (is(UT == short) || is(UT == ushort) || is(UT == wchar)) {
+		} else static if (T.sizeof == 2) {
 			type_ = ColumnTypes.MYSQL_TYPE_SHORT;
 		} else {
 			type_ = ColumnTypes.MYSQL_TYPE_TINY;
 		}
 
-		sign_ = isUnsigned!UT ? 0x80 : 0x00;
+		sign_ = isUnsigned!T ? 0x80 : 0x00;
 		buffer_[0 .. T.sizeof] = (cast(ubyte*)&value)[0 .. T.sizeof];
 	}
 
@@ -1168,18 +1166,16 @@ void putValue(T)(ref OutputPacket packet, T value) if (is(Unqual!T == Duration))
 }
 
 void putValueType(T)(ref OutputPacket packet, T value)
-if (isIntegral!T || isBoolean!T) {
-	alias UT = Unqual!T;
+if (__traits(isIntegral, T)) {
+	enum ubyte sign = isUnsigned!T ? 0x80 : 0x00;
 
-	enum ubyte sign = isUnsigned!UT ? 0x80 : 0x00;
-
-	static if (is(UT == long) || is(UT == ulong)) {
+	static if (T.sizeof == 8) {
 		packet.put!ubyte(ColumnTypes.MYSQL_TYPE_LONGLONG);
 		packet.put!ubyte(sign);
-	} else static if (is(UT == int) || is(UT == uint) || is(UT == dchar)) {
+	} else static if (T.sizeof == 4) {
 		packet.put!ubyte(ColumnTypes.MYSQL_TYPE_LONG);
 		packet.put!ubyte(sign);
-	} else static if (is(UT == short) || is(UT == ushort) || is(UT == wchar)) {
+	} else static if (T.sizeof == 2) {
 		packet.put!ubyte(ColumnTypes.MYSQL_TYPE_SHORT);
 		packet.put!ubyte(sign);
 	} else {
@@ -1188,14 +1184,12 @@ if (isIntegral!T || isBoolean!T) {
 	}
 }
 
-void putValue(T)(ref OutputPacket packet, T value) if (isIntegral!T || isBoolean!T) {
-	alias UT = Unqual!T;
-
-	static if (is(UT == long) || is(UT == ulong)) {
+void putValue(T)(ref OutputPacket packet, T value) if (__traits(isIntegral, T)) {
+	static if (T.sizeof == 8) {
 		packet.put!ulong(value);
-	} else static if (is(UT == int) || is(UT == uint) || is(UT == dchar)) {
+	} else static if (T.sizeof == 4) {
 		packet.put!uint(value);
-	} else static if (is(UT == short) || is(UT == ushort) || is(UT == wchar)) {
+	} else static if (T.sizeof == 2) {
 		packet.put!ushort(value);
 	} else {
 		packet.put!ubyte(value);

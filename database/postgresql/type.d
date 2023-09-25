@@ -1,15 +1,13 @@
 module database.postgresql.type;
 
+import core.bitop : bsr;
 import database.postgresql.protocol;
 import database.postgresql.packet;
 import database.postgresql.row;
 import std.algorithm;
-import std.array : appender;
 import std.datetime;
 import std.format : format, formattedWrite;
-import std.meta : AliasSeq;
 import std.traits;
-import std.typecons;
 public import database.util;
 
 enum isValueType(T) = !is(Unqual!T == struct) || is(Unqual!T == PgSQLValue) ||
@@ -27,14 +25,9 @@ template PgTypeof(T) if (!is(Unqual!T == enum)) {
 		alias U = Unqual!T;
 		static if (is(U : typeof(null)))
 			enum PgTypeof = PgType.NULL;
-		else static if (isIntegral!T) {
-			static if (T.sizeof == 4)
-				enum PgTypeof = PgType.INT4;
-			else static if (T.sizeof == 8)
-				enum PgTypeof = PgType.INT8;
-			else
-				enum PgTypeof = PgType.INT2;
-		} else static if (isSomeString!T)
+		else static if (isIntegral!T)
+			enum PgTypeof = [PgType.INT2, PgType.INT4, PgType.INT8][T.sizeof / 4];
+		else static if (isSomeString!T)
 			enum PgTypeof = PgType.TEXT;
 		else static if (is(U == float))
 			enum PgTypeof = PgType.REAL;
@@ -77,14 +70,13 @@ struct PgSQLValue {
 
 	// dfmt off
 	this(T)(T value) @trusted if (isScalarType!T && !isBoolean!T) {
-		static if (is(UT == float))			type_ = PgType.REAL;
-		else static if (isFloatingPoint!T) {type_ = PgType.DOUBLE;
+		static if (isFloatingPoint!T) {
 			static assert(T.sizeof <= 8, "Unsupported type: " ~ T.stringof);
-		} else static if (T.sizeof == 8)	type_ = PgType.INT8;
-		else static if (T.sizeof == 4)		type_ = PgType.INT4;
-		else static if (T.sizeof == 2)		type_ = PgType.INT2;
-		else
-			type_ = PgType.CHAR;
+			enum t = [PgType.REAL, PgType.DOUBLE][T.sizeof / 8];
+		} else{
+			enum t = [PgType.CHAR, PgType.INT2, PgType.INT4, PgType.INT8][bsr(T.sizeof)];
+		}
+		type_ = t;
 
 		*cast(Unqual!T*)&p = value;
 	}
@@ -184,6 +176,8 @@ struct PgSQLValue {
 	}
 
 	string toString() const {
+		import std.array : appender;
+
 		auto app = appender!string;
 		toString(app);
 		return app[];
