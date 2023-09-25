@@ -18,9 +18,8 @@ import std.datetime;
 
 alias Socket = DBSocket!MySQLConnectionException;
 
-immutable CapabilityFlags DefaultClientCaps = CapabilityFlags.CLIENT_LONG_PASSWORD | CapabilityFlags.CLIENT_LONG_FLAG |
-	CapabilityFlags.CLIENT_CONNECT_WITH_DB | CapabilityFlags.CLIENT_PROTOCOL_41 | CapabilityFlags
-		.CLIENT_SECURE_CONNECTION | CapabilityFlags.CLIENT_SESSION_TRACK;
+enum DefaultClientCaps = CF.CLIENT_LONG_PASSWORD | CF.CLIENT_LONG_FLAG | CF.CLIENT_CONNECT_WITH_DB | CF
+		.CLIENT_PROTOCOL_41 | CF.CLIENT_SECURE_CONNECTION | CF.CLIENT_SESSION_TRACK;
 
 struct Status {
 	ulong affected;
@@ -32,49 +31,11 @@ struct Status {
 	ushort warnings;
 }
 
-private struct ConnectionSettings {
-	this(const(char)[] connectionString) {
-		auto remaining = connectionString;
+private:
 
-		auto indexValue = remaining.indexOf('=');
-		while (!remaining.empty) {
-			auto indexValueEnd = remaining.indexOf(';', indexValue);
-			if (indexValueEnd <= 0)
-				indexValueEnd = remaining.length;
+alias CF = CapabilityFlags;
 
-			auto name = strip(remaining[0 .. indexValue]);
-			auto value = strip(remaining[indexValue + 1 .. indexValueEnd]);
-
-			switch (name) {
-			case "host":
-				host = value;
-				break;
-			case "user":
-				user = value;
-				break;
-			case "pwd":
-				pwd = value;
-				break;
-			case "db":
-				db = value;
-				break;
-			case "port":
-				port = to!ushort(value);
-				break;
-			default:
-				throw new MySQLException(format("Bad connection string: %s", connectionString));
-			}
-
-			if (indexValueEnd == remaining.length)
-				return;
-
-			remaining = remaining[indexValueEnd + 1 .. $];
-			indexValue = remaining.indexOf("=");
-		}
-
-		throw new MySQLException(format("Bad connection string: %s", connectionString));
-	}
-
+struct ConnectionSettings {
 	CapabilityFlags caps = DefaultClientCaps;
 
 	const(char)[] host;
@@ -84,7 +45,7 @@ private struct ConnectionSettings {
 	ushort port = 3306;
 }
 
-private struct ServerInfo {
+struct ServerInfo {
 	const(char)[] versionStr;
 	ubyte protocol;
 	ubyte charSet;
@@ -93,24 +54,14 @@ private struct ServerInfo {
 	uint caps;
 }
 
-private struct PreparedStatement {
+struct PreparedStatement {
 	uint id;
 	uint params;
 }
 
+public:
+
 class Connection {
-	this(string connectionString, CapabilityFlags caps = DefaultClientCaps) {
-		settings_ = ConnectionSettings(connectionString);
-		settings_.caps = caps | CapabilityFlags.CLIENT_LONG_PASSWORD | CapabilityFlags
-			.CLIENT_PROTOCOL_41;
-
-		connect();
-	}
-
-	this(const(char)[] host, const(char)[] user, const(char)[] pwd, const(char)[] db, ushort port = 3306) {
-		this(host, user, pwd, db, port, DefaultClientCaps);
-	}
-
 	this(const(char)[] host, const(char)[] user, const(char)[] pwd, const(char)[] db, ushort port = 3306, CapabilityFlags caps = DefaultClientCaps) {
 		settings_.host = host;
 		settings_.user = user;
@@ -123,7 +74,7 @@ class Connection {
 		connect();
 	}
 
-	void use(const(char)[] db) {
+	void use(in char[] db) {
 		send(Commands.COM_INIT_DB, db);
 		eatStatus(retrieve());
 
@@ -305,10 +256,10 @@ class Connection {
 		static if (args.length == 0) {
 			enum shouldDiscard = true;
 		} else {
-			enum shouldDiscard = !isCallable!(args[args.length - 1]);
+			enum shouldDiscard = !isCallable!(args[$ - 1]);
 		}
 
-		enum argCount = shouldDiscard ? args.length : (args.length - 1);
+		enum argCount = shouldDiscard ? args.length : args.length - 1;
 
 		if (!argCount && stmt.params) {
 			throw new MySQLErrorException(format("Wrong number of parameters for query. Got 0 but expected %d.", stmt
@@ -419,7 +370,7 @@ class Connection {
 
 	@property bool connected() const => socket && socket.isAlive;
 
-	void close() {
+	void close() nothrow {
 		clearClientPreparedCache();
 		socket.close();
 		socket = null;
@@ -453,9 +404,8 @@ package(database):
 	@property void busy(bool value) {
 		busy_ = value;
 
-		if (!value) {
+		if (!value)
 			clearClientPreparedCache();
-		}
 	}
 
 private:
@@ -492,13 +442,13 @@ private:
 		}
 	}
 
-	void clearClientPreparedCache() {
-		if (clientPreparedCaches_.length == 0) {
+	void clearClientPreparedCache() nothrow {
+		if (clientPreparedCaches_.length == 0)
 			return;
-		}
-
-		foreach (p; clientPreparedCaches_) {
-			closePreparedStatement(p);
+		try
+			foreach (p; clientPreparedCaches_) {
+				closePreparedStatement(p);
+			} catch (Exception) {
 		}
 
 		clientPreparedCaches_.clear();
