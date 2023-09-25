@@ -191,7 +191,7 @@ void eatValue(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue valu
 			return;
 		case VARCHAR, CHARA:
 		case TEXT, NAME:
-			value = PgSQLValue(column.type, packet.eat!(char[])(length).idup);
+			value = PgSQLValue(column.type, packet.eat!(char[])(length).dup);
 			return;
 		case BYTEA:
 			value = PgSQLValue(packet.eat!(ubyte[])(length).dup);
@@ -213,7 +213,7 @@ void eatValue(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue valu
 		}
 		return;
 	}
-	auto svalue = packet.eat!string(length);
+	auto svalue = packet.eat!(const(char)[])(length);
 	switch (column.type) with (PgType) {
 	case UNKNOWN, NULL:
 		value = PgSQLValue(null);
@@ -247,7 +247,7 @@ void eatValue(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue valu
 	case UUID, JSON, XML:
 	case TEXT, NAME:
 	case VARCHAR, CHARA:
-		value = PgSQLValue(column.type, svalue);
+		value = PgSQLValue(column.type, svalue.dup);
 		break;
 	case BYTEA:
 		if (svalue.length >= 2)

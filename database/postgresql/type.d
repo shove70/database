@@ -54,7 +54,7 @@ template PgTypeof(T) if (!is(Unqual!T == enum)) {
 @safe pure:
 
 struct PgSQLValue {
-	package this(PgType type, in void[] str) @trusted {
+	package this(PgType type, char[] str) {
 		type_ = type;
 		arr = cast(ubyte[])str;
 	}
@@ -73,9 +73,8 @@ struct PgSQLValue {
 		static if (isFloatingPoint!T) {
 			static assert(T.sizeof <= 8, "Unsupported type: " ~ T.stringof);
 			enum t = [PgType.REAL, PgType.DOUBLE][T.sizeof / 8];
-		} else{
+		} else
 			enum t = [PgType.CHAR, PgType.INT2, PgType.INT4, PgType.INT8][bsr(T.sizeof)];
-		}
 		type_ = t;
 
 		*cast(Unqual!T*)&p = value;
@@ -537,19 +536,7 @@ struct PgSQLTimestamp {
 	}
 }
 
-private void skip(ref string x, in char ch) {
-	if (!x.length || x[0] != ch)
-		throw new PgSQLProtocolException("Bad datetime string format");
-	x = x[1 .. $];
-}
-
-private void skip(ref string x) {
-	if (!x.length)
-		throw new PgSQLProtocolException("Bad datetime string format");
-	x = x[1 .. $];
-}
-
-auto parseDate(ref string x) {
+auto parseDate(ref scope const(char)[] x) {
 	int year = x.parse!int(0);
 	x.skip('-');
 	int month = x.parse!int(0);
@@ -558,7 +545,7 @@ auto parseDate(ref string x) {
 	return Date(year, month, day);
 }
 
-auto parsePgSQLTime(ref string x) {
+auto parsePgSQLTime(ref scope const(char)[] x) {
 	auto hour = x.parse!uint(0);
 	x.skip(':');
 	auto minute = x.parse!uint(0);
@@ -595,9 +582,22 @@ auto parsePgSQLTime(ref string x) {
 	return res;
 }
 
-auto parsePgSQLTimestamp(ref string x) {
+auto parsePgSQLTimestamp(ref scope const(char)[] x) {
 	auto date = parseDate(x);
 	x.skip();
 	auto time = parsePgSQLTime(x);
 	return PgSQLTimestamp(date, time);
+}
+
+private:
+void skip(ref scope const(char)[] x, char ch) {
+	if (!x.length || x[0] != ch)
+		throw new PgSQLProtocolException("Bad datetime string format");
+	x = x[1 .. $];
+}
+
+void skip(ref scope const(char)[] x) {
+	if (!x.length)
+		throw new PgSQLProtocolException("Bad datetime string format");
+	x = x[1 .. $];
 }
