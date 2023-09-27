@@ -161,7 +161,7 @@ struct Statement {
 			step();
 		T t;
 		int i = void;
-		static foreach (N; FieldNameTuple!T) {
+		foreach (N; FieldNameTuple!T) {
 			i = findColumn(ColumnName!(T, N));
 			if (i >= 0)
 				__traits(getMember, t, N) = getArg!(typeof(__traits(getMember, t, N)))(i);
@@ -192,7 +192,7 @@ struct Statement {
 private:
 	sqlite3* db;
 
-	int bindArg(S)(int pos, S arg) if (isSomeString!S) {
+	int bindArg(int pos, const char[] arg) {
 		static if (size_t.sizeof > 4)
 			return sqlite3_bind_text64(stmt, pos, arg.ptr, arg.length, null, SQLITE_UTF8);
 		else
@@ -222,7 +222,7 @@ private:
 			return sqlite3_bind_blob(stmt, pos, arg.ptr, cast(int)arg.length, null);
 	}
 
-	int bindArg(T)(int pos, T) if (is(Unqual!T : typeof(null)))
+	int bindArg(int pos, typeof(null))
 		=> sqlite3_bind_null(stmt, pos);
 
 	T getArg(T)(int pos)

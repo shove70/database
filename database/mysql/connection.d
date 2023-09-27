@@ -276,7 +276,7 @@ class Connection {
 				const auto index = (indexArg >> 3) & (NullsCapacity - 1);
 				const auto bit = indexArg & 7;
 
-				static if (is(typeof(arg) == typeof(null))) {
+				static if (is(typeof(arg) : typeof(null))) {
 					nulls[index] = nulls[index] | (1 << bit);
 					++indexArg;
 				} else static if (is(Unqual!(typeof(arg)) == MySQLValue)) {
@@ -977,7 +977,7 @@ private:
 		size_t argCount;
 
 		foreach (i, arg; args) {
-			static if (is(typeof(arg) == typeof(null))) {
+			static if (is(typeof(arg) : typeof(null))) {
 				++argCount;
 				estimated += 4;
 			} else static if (is(Unqual!(typeof(arg)) == MySQLValue)) {
