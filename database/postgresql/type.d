@@ -10,17 +10,17 @@ import std.format : format, formattedWrite;
 import std.traits;
 public import database.util;
 
-enum isValueType(T) = !is(Unqual!T == struct) || is(Unqual!T == PgSQLValue) ||
+enum isValueType(T) = !is(T == struct) || is(Unqual!T == PgSQLValue) ||
 	is(Unqual!T == Date) || is(Unqual!T == DateTime) || is(Unqual!T == SysTime);
 
-template PgTypeof(T) if (is(Unqual!T == enum)) {
+template PgTypeof(T) if (is(T == enum)) {
 	static if (is(Unqual!T == PgType))
 		enum PgTypeof = PgType.OID;
 	else
 		enum PgTypeof = PgTypeof!(OriginalType!T);
 }
 
-template PgTypeof(T) if (!is(Unqual!T == enum)) {
+template PgTypeof(T) if (!is(T == enum)) {
 	static if (is(T)) {
 		alias U = Unqual!T;
 		static if (is(U : typeof(null)))
@@ -59,7 +59,7 @@ struct PgSQLValue {
 		arr = cast(ubyte[])str;
 	}
 
-	this(T)(T) if (is(Unqual!T : typeof(null))) {
+	this(typeof(null)) {
 		type_ = PgType.NULL;
 	}
 
@@ -80,43 +80,43 @@ struct PgSQLValue {
 		*cast(Unqual!T*)&p = value;
 	}
 
-	this(T)(T value) @trusted if (is(Unqual!T == Date)) {
+	this(Date value) @trusted {
 		type_ = PgType.DATE;
 		timestamp.date = value;
 	}
 
-	this(T)(T value) if (is(Unqual!T == TimeOfDay)) {
+	this(TimeOfDay value) {
 		this(PgSQLTime(value.hour, value.minute, value.second));
 	}
 
-	this(T)(T value) @trusted if (is(Unqual!T == PgSQLTime)) {
+	this(PgSQLTime value) @trusted {
 		type_ = PgType.TIME;
 		timestamp.time = value;
 	}
 
-	this(T)(T value) if (is(Unqual!T == DateTime)) {
+	this(DateTime value) {
 		this(PgSQLTimestamp(value.date, PgSQLTime(value.hour, value.minute, value.second)));
 	}
 
-	this(T)(T value) @trusted if (is(Unqual!T == SysTime)) {
+	this(in SysTime value) @trusted {
 		this(cast(DateTime)value);
 		type_ = PgType.TIMESTAMPTZ;
 	}
 
-	this(T)(T value) @trusted if (is(Unqual!T == PgSQLTimestamp)) {
+	this(in PgSQLTimestamp value) @trusted {
 		type_ = PgType.TIMESTAMP;
 		timestamp.date = value.date;
 		timestamp.time = value.time;
 	}
 
-	this(T)(T value) if (isSomeString!(OriginalType!T) && typeof(T.init[0]).sizeof == 1) {
+	this(const(char)[] value) @trusted {
 		type_ = PgType.VARCHAR;
 		arr = cast(ubyte[])value;
 	}
 
-	this(T)(T value) if (is(Unqual!T == ubyte[])) {
+	this(const(ubyte)[] value) @trusted {
 		type_ = PgType.BYTEA;
-		arr = value;
+		arr = cast(ubyte[])value;
 	}
 
 	void toString(R)(ref R app) @trusted const {
@@ -221,7 +221,7 @@ struct PgSQLValue {
 		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
 
-	T get(T)() @trusted const if (is(Unqual!T == DateTime)) {
+	T get(T : DateTime)() @trusted const {
 		switch (type_) with (PgType) {
 		case TIMESTAMP, TIMESTAMPTZ:
 			return timestamp.toDateTime;
@@ -230,7 +230,7 @@ struct PgSQLValue {
 		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
 
-	T get(T)() @trusted const if (is(Unqual!T == TimeOfDay)) {
+	T get(T : TimeOfDay)() @trusted const {
 		switch (type_) with (PgType) {
 		case TIME, TIMETZ:
 			return time.toTimeOfDay;
@@ -241,7 +241,7 @@ struct PgSQLValue {
 		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
 
-	T get(T)() @trusted const if (is(Unqual!T == Duration)) {
+	T get(T : Duration)() @trusted const {
 		switch (type_) with (PgType) {
 		case TIME, TIMETZ:
 		case TIMESTAMP, TIMESTAMPTZ:
@@ -261,7 +261,7 @@ struct PgSQLValue {
 		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
 
-	T get(T)() const if (is(Unqual!T == enum))
+	T get(T)() const if (is(T == enum))
 	=> cast(T)get!(OriginalType!T);
 
 	T get(T)() const @trusted if (isArray!T && !is(T == enum)) {

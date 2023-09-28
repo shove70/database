@@ -75,7 +75,7 @@ struct MySQLValue {
 		name_ = name;
 	}
 
-	this(T)(T) if (is(Unqual!T == typeof(null))) {
+	this(typeof(null)) {
 		type_ = ColumnTypes.MYSQL_TYPE_NULL;
 		sign_ = 0x00;
 	}
@@ -321,7 +321,7 @@ struct MySQLValue {
 		}
 	}
 
-	T get(T)() const if (is(Unqual!T == enum)) => cast(T)get!(OriginalType!T);
+	T get(T)() const if (is(T == enum)) => cast(T)get!(OriginalType!T);
 
 	T get(T)() const if (isArray!T && !is(T == enum)) {
 		switch (type_) with (ColumnTypes) {
@@ -1319,13 +1319,12 @@ void putValue(T)(ref OutputPacket packet, T value) if (is(Unqual!T == MySQLValue
 	}
 }
 
-void putValueType(T)(ref OutputPacket packet, T value)
-if (is(Unqual!T == typeof(null))) {
+void putValueType(ref OutputPacket packet, typeof(null)) {
 	packet.put!ubyte(ColumnTypes.MYSQL_TYPE_NULL);
 	packet.put!ubyte(0x00);
 }
 
-void putValue(T)(ref OutputPacket packet, T value) if (is(Unqual!T == typeof(null))) {
+void putValue(ref OutputPacket packet, typeof(null)) {
 }
 
 void putValueType(T)(ref OutputPacket packet, T value)

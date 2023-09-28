@@ -169,7 +169,7 @@ struct SQLBuilder {
 		=> del(quote(SQLName!Table));
 
 	///
-	static SB del(S : const(char)[])(S table)
+	static SB del(string table)
 		=> SB(table, State.del);
 
 	///
@@ -201,14 +201,14 @@ struct SQLBuilder {
 	///
 	mixin(Clause!("returning"));
 
-	SB opCall(S : const(char)[])(S expr) {
+	SB opCall(const(char)[] expr) {
 		sql ~= expr;
 		return this;
 	}
 
 private:
 	enum Clause(string name, prevStates...) =
-		"SB " ~ name ~ "(S : const(char)[])(S expr)" ~
+		"SB " ~ name ~ "(const(char)[] expr)" ~
 		(prevStates.length ? "in(state == State." ~ [prevStates].join!(string[])(
 				" || state == State.") ~ `, "Wrong SQL: ` ~ name ~ ` after " ~ state)` : "")
 		~ "{ sql ~= " ~ (__traits(hasMember, State, name) ?

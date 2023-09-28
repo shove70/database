@@ -14,7 +14,7 @@ if (isArray!T && !isSomeString!(OriginalType!T)) {
 	}
 }
 
-void appendValue(R, T)(ref R appender, T) if (is(Unqual!T : typeof(null))) {
+void appendValue(R)(ref R appender, typeof(null)) {
 	appender.put("null");
 }
 
