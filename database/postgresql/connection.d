@@ -100,18 +100,18 @@ class Connection {
 		return affected;
 	}
 
-	void prepare(Args...)(in char[] statement, in char[] query)
+	void prepare(Args...)(in char[] statement, in char[] sql)
 	if (Args.length <= short.max) {
 		ensureConnected();
 
 		out_.length = 4 +
 			statement.length + 1 +
-			query.length + 1 +
+			sql.length + 1 +
 			2 +
 			Args.length * 4 + 1;
 		auto cmd = OutputPacket(OutputMessageType.Parse, out_);
 		cmd.put(statement);
-		cmd.put(query);
+		cmd.put(sql);
 		cmd.put(cast(short)Args.length);
 		foreach (T; Args)
 			cmd.put(PgTypeof!T);

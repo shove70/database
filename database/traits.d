@@ -50,8 +50,6 @@ enum foreign(alias field) = sqlkey(ColumnName!(field, true));
 
 /// Get the keyname of `T`, return empty if fails
 template KeyName(alias T, string defaultName = T.stringof) {
-	import std.traits;
-
 	static if (hasUDA!(T, ignore))
 		enum KeyName = "";
 	else static if (hasUDA!(T, as))
@@ -128,22 +126,21 @@ template SQLTypeOf(T) {
 		enum SQLTypeOf = "BOOLEAN";
 	else static if (!isSomeString!T && !isScalarType!T) {
 		version (USE_PGSQL) {
-			alias U = Unqual!T;
-			static if (is(U == Date))
+			static if (is(T : Date))
 				enum SQLTypeOf = "date";
-			else static if (is(U == DateTime))
+			else static if (is(T : DateTime))
 				enum SQLTypeOf = "timestamp";
-			else static if (is(U == SysTime))
+			else static if (is(T : SysTime))
 				enum SQLTypeOf = "timestamp with time zone";
-			else static if (is(U == TimeOfDay))
+			else static if (is(T : TimeOfDay))
 				enum SQLTypeOf = "time";
-			else static if (is(U == Duration))
+			else static if (is(T : Duration))
 				enum SQLTypeOf = "interval";
 			else
 				enum SQLTypeOf = "bytea";
-		} else static if (is(U == Date))
+		} else static if (is(T : Date))
 			enum SQLTypeOf = "INT";
-		else static if (is(U == DateTime) || is(U == Duration))
+		else static if (is(T : DateTime) || is(T : Duration))
 			enum SQLTypeOf = "BIGINT";
 		else
 			enum SQLTypeOf = "BLOB";
@@ -203,8 +200,8 @@ template sortTable(T...) if (T.length <= uint.max) {
 		uint[][N] g;
 		uint[N] in_;
 		foreach (i, Table; T) {
-			static foreach (j, _; Table.tupleof)
-				static foreach (S; __traits(getAttributes, Table.tupleof[j]))
+			foreach (j, _; Table.tupleof)
+				foreach (S; __traits(getAttributes, Table.tupleof[j]))
 					static if (is(typeof(S) == sqlkey) && S.key.length) {
 						g[nameToIndex[S.key[0 .. S.key.indexOf('(')]]] ~= i;
 						in_[i]++;

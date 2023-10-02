@@ -103,7 +103,7 @@ alias RCExSql = RefCounted!(ExpandedSql, RefCountedAutoInitialize.no);
 enum EpochDateTime = DateTime(2000, 1, 1, 0, 0, 0);
 
 private enum canConvertToInt(T) = isIntegral!T ||
-	is(Unqual!T == Date) || is(Unqual!T == DateTime) || is(Unqual!T == Duration);
+	is(T : Date) || is(T : DateTime) || is(T : Duration);
 
 /// Represents a sqlite3 statement
 struct Statement {
@@ -127,7 +127,7 @@ struct Statement {
 
 	/// Bind these args in order to '?' marks in statement
 	void set(Args...)(auto ref Args args) {
-		static foreach (a; args)
+		foreach (a; args)
 			db.checkError("Bind failed: ", bindArg(++argIndex, a));
 	}
 
@@ -203,11 +203,11 @@ private:
 		=> sqlite3_bind_double(stmt, pos, arg);
 
 	int bindArg(T)(int pos, T x) if (canConvertToInt!T) {
-		static if (is(Unqual!T == Date))
+		static if (is(T : Date))
 			return sqlite3_bind_int(stmt, pos, x.dayOfGregorianCal);
-		else static if (is(Unqual!T == DateTime))
+		else static if (is(T : DateTime))
 			return sqlite3_bind_int64(stmt, pos, (x - EpochDateTime).total!"usecs");
-		else static if (is(Unqual!T == Duration))
+		else static if (is(T : Duration))
 			return sqlite3_bind_int64(stmt, pos, x.total!"usecs");
 		else static if (T.sizeof > 4)
 			return sqlite3_bind_int64(stmt, pos, x);
@@ -230,11 +230,11 @@ private:
 		int typ = sqlite3_column_type(stmt, pos);
 		static if (canConvertToInt!T) {
 			enforce!SQLEx(typ == SQLITE_INTEGER, "Column is not an integer");
-			static if (is(Unqual!T == Date))
+			static if (is(T : Date))
 				return Date(sqlite3_column_int(stmt, pos));
-			else static if (is(Unqual!T == DateTime))
+			else static if (is(T : DateTime))
 				return EpochDateTime + dur!"usecs"(sqlite3_column_int64(stmt, pos));
-			else static if (is(Unqual!T == Duration))
+			else static if (is(T : Duration))
 				return dur!"usecs"(sqlite3_column_int64(stmt, pos));
 			else static if (T.sizeof > 4)
 				return sqlite3_column_int64(stmt, pos);

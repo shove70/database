@@ -116,14 +116,13 @@ struct MySQLValue {
 		buffer_[0 .. T.sizeof] = (cast(ubyte*)&value)[0 .. T.sizeof];
 	}
 
-	this(T)(T value)
-	if (is(Unqual!T == Date) || is(Unqual!T == DateTime) || is(Unqual!T == SysTime)) {
+	this(T)(T value) if (is(T : Date) || is(T : DateTime) || is(T : SysTime)) {
 		type_ = ColumnTypes.MYSQL_TYPE_TIMESTAMP;
 		sign_ = 0x00;
 		(*cast(MySQLDateTime*)buffer_) = MySQLDateTime.from(value);
 	}
 
-	this(T)(T value) if (is(Unqual!T == Duration) || is(Unqual!T == TimeOfDay)) {
+	this(T)(T value) if (is(T : Duration) || is(T : TimeOfDay)) {
 		type_ = ColumnTypes.MYSQL_TYPE_TIME;
 		sign_ = 0x00;
 		(*cast(MySQLTime*)buffer_) = MySQLTime.from(value);
@@ -277,7 +276,7 @@ struct MySQLValue {
 	}
 
 	T get(T)() const
-	if (is(Unqual!T == SysTime) || is(Unqual!T == DateTime) || is(Unqual!T == Date)) {
+	if (is(T : SysTime) || is(T : DateTime) || is(T : Date)) {
 		switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_DATE:
 		case MYSQL_TYPE_NEWDATE:
@@ -292,7 +291,7 @@ struct MySQLValue {
 		}
 	}
 
-	T get(T)() const if (is(Unqual!T == TimeOfDay)) {
+	T get(T)() const if (is(T : TimeOfDay)) {
 		switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_DATE:
 		case MYSQL_TYPE_NEWDATE:
@@ -310,7 +309,7 @@ struct MySQLValue {
 		}
 	}
 
-	T get(T)() const if (is(Unqual!T == Duration)) {
+	T get(T)() const if (is(T : Duration)) {
 		switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_TIME:
 		case MYSQL_TYPE_TIME2:
@@ -357,14 +356,10 @@ struct MySQLValue {
 
 	T peek(T)() const if (isScalarType!T) => get!T;
 
-	T peek(T)() const
+	T peek(T)() const if (is(T : SysTime) || is(T : DateTime) ||
+		is(T : Date) || is(T : TimeOfDay)) => get!T;
 
-
-
-	if (is(Unqual!T == SysTime) || is(Unqual!T == DateTime) || is(Unqual!T == Date) || is(
-			Unqual!T == TimeOfDay)) => get!T;
-
-	T peek(T)() const if (is(Unqual!T == Duration)) => get!T;
+	T peek(T)() const if (is(T : Duration)) => get!T;
 
 	T peek(T)() const if (isArray!T) {
 		switch (type_) with (ColumnTypes) {
@@ -638,7 +633,7 @@ struct MySQLTime {
 	ubyte secs;
 	uint usecs;
 
-	auto to(T)() const if (is(Unqual!T == Duration)) {
+	auto to(T : Duration)() const {
 		auto total = days * 86400_000_000L +
 			hours * 3600_000_000L +
 			mins * 60_000_000L +
@@ -647,8 +642,8 @@ struct MySQLTime {
 		return cast(T)dur!"usecs"(negative ? -total : total);
 	}
 
-	auto to(T)() const if (is(Unqual!T == TimeOfDay))
-	=> cast(T)TimeOfDay(hours, mins, secs);
+	auto to(T : TimeOfDay)() const
+		=> cast(T)TimeOfDay(hours, mins, secs);
 
 	static MySQLTime from(Duration duration) {
 		MySQLTime time;
@@ -721,22 +716,22 @@ struct MySQLDateTime {
 
 	bool valid() const => month != 0;
 
-	T to(T)() const if (is(Unqual!T == SysTime)) {
+	T to(T : SysTime)() const {
 		assert(valid());
 		return cast(T)SysTime(DateTime(year, month, day, hour, min, sec), usec.dur!"usecs", UTC());
 	}
 
-	T to(T)() const if (is(Unqual!T == DateTime)) {
+	T to(T : DateTime)() const {
 		assert(valid());
 		return cast(T)DateTime(year, month, day, hour, min, sec);
 	}
 
-	T to(T)() const if (is(T == Date)) {
+	T to(T : Date)() const {
 		assert(valid());
 		return cast(T)Date(year, month, day);
 	}
 
-	T to(T)() const if (is(Unqual!T == TimeOfDay)) => cast(T)TimeOfDay(hour, min, sec);
+	T to(T : TimeOfDay)() const => cast(T)TimeOfDay(hour, min, sec);
 
 	static MySQLDateTime from(SysTime sysTime) {
 		MySQLDateTime time;
@@ -986,8 +981,7 @@ void eatValueText(ref InputPacket packet, ref const MySQLColumn column, ref MySQ
 		value = MySQLValue(column.name, column.type, signed, null, 0);
 		break;
 	case MYSQL_TYPE_TINY:
-		auto x = svalue.ptr[0] == '-' ? cast(ubyte)(-1 * svalue[1 .. $].to!byte)
-			: svalue.to!ubyte;
+		auto x = svalue.ptr[0] == '-' ? cast(ubyte)(-1 * svalue[1 .. $].to!byte) : svalue.to!ubyte;
 		value = MySQLValue(column.name, column.type, signed, &x, 1);
 		break;
 	case MYSQL_TYPE_YEAR:
@@ -1146,27 +1140,26 @@ void putValue(T)(ref OutputPacket packet, T value) if (is(Unqual!T == Variant)) 
 }
 
 void putValueType(T)(ref OutputPacket packet, T value)
-if (is(Unqual!T == Date) || is(Unqual!T == DateTime) || is(Unqual!T == SysTime)) {
+if (is(T : Date) || is(T : DateTime) || is(T : SysTime)) {
 	packet.put!ubyte(ColumnTypes.MYSQL_TYPE_TIMESTAMP);
 	packet.put!ubyte(0x80);
 }
 
 void putValue(T)(ref OutputPacket packet, T value)
-if (is(Unqual!T == Date) || is(Unqual!T == DateTime) || is(Unqual!T == SysTime)) {
+if (is(T : Date) || is(T : DateTime) || is(T : SysTime)) {
 	putMySQLDateTime(packet, MySQLDateTime.from(value));
 }
 
-void putValueType(T)(ref OutputPacket packet, T value) if (is(Unqual!T == Duration)) {
+void putValueType(T)(ref OutputPacket packet, T value) if (is(T : Duration)) {
 	packet.put!ubyte(ColumnTypes.MYSQL_TYPE_TIME);
 	packet.put!ubyte(0x00);
 }
 
-void putValue(T)(ref OutputPacket packet, T value) if (is(Unqual!T == Duration)) {
+void putValue(T)(ref OutputPacket packet, T value) if (is(T : Duration)) {
 	putMySQLTime(packet, MySQLTime.from(value));
 }
 
-void putValueType(T)(ref OutputPacket packet, T value)
-if (__traits(isIntegral, T)) {
+void putValueType(T)(ref OutputPacket packet, T value) if (__traits(isIntegral, T)) {
 	enum ubyte sign = isUnsigned!T ? 0x80 : 0x00;
 
 	static if (T.sizeof == 8) {
