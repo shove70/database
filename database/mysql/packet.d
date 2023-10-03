@@ -97,7 +97,6 @@ struct OutputPacket {
 	void finalize(ubyte seq) {
 		if (pos >= 0xffffff)
 			throw new MySQLConnectionException("Packet size exceeds 2^24");
-		uint length = cast(uint)pos;
 		uint header = cast(uint)((pos & 0xffffff) | (seq << 24));
 		*(cast(uint*)buf.ptr) = header;
 	}

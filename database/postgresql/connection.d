@@ -1,13 +1,11 @@
 module database.postgresql.connection;
 
-// dfmt off
 import database.postgresql.db,
-	database.postgresql.packet,
-	database.postgresql.protocol,
-	database.postgresql.row,
-	database.postgresql.type,
-	database.util;
-// dfmt on
+database.postgresql.packet,
+database.postgresql.protocol,
+database.postgresql.row,
+database.postgresql.type,
+database.util;
 
 alias Socket = DBSocket!PgSQLConnectionException;
 
@@ -18,6 +16,7 @@ struct Status {
 	ulong affected, insertID;
 }
 
+// dfmt off
 struct Settings {
 	string
 		host,
@@ -37,6 +36,10 @@ private struct ServerInfo {
 	uint processId,
 	cancellationKey;
 }
+
+private alias IMT = InputMessageType,
+	OMT = OutputMessageType;
+// dfmt on
 
 @safe:
 class Connection {
@@ -73,8 +76,8 @@ class Connection {
 	auto runSql(T = PgSQLRow)(in char[] sql) {
 		ensureConnected();
 
-		out_.length = 1 + 4 + sql.length + 1;
-		auto cmd = OutputPacket(OutputMessageType.Query, out_);
+		out_.length = 5 + sql.length + 1;
+		auto cmd = OutputPacket(OMT.Query, out_);
 		cmd.put(sql);
 		socket.write(cmd.data);
 		return QueryResult!T(this);
@@ -84,7 +87,7 @@ class Connection {
 		prepare!Args("", sql);
 		bind("", "", forward!args);
 		flush();
-		eatStatuses(InputMessageType.BindComplete, true);
+		eatStatuses(IMT.BindComplete, true);
 		describe();
 		sendExecute();
 		return QueryResult!T(this, FormatCode.Binary);
@@ -94,7 +97,7 @@ class Connection {
 		prepare!Args("", sql);
 		bind("", "", forward!args);
 		flush();
-		eatStatuses(InputMessageType.BindComplete, true);
+		eatStatuses(IMT.BindComplete, true);
 		sendExecute();
 		eatStatuses();
 		return affected;
@@ -102,17 +105,19 @@ class Connection {
 
 	void prepare(Args...)(in char[] statement, in char[] sql)
 	if (Args.length <= short.max) {
+		if (statement.length > 255)
+			throw new PgSQLException("statement name is too long");
 		ensureConnected();
 
-		out_.length = 4 +
+		out_.length = 5 +
 			statement.length + 1 +
 			sql.length + 1 +
 			2 +
-			Args.length * 4 + 1;
-		auto cmd = OutputPacket(OutputMessageType.Parse, out_);
+			Args.length * 4;
+		auto cmd = OutputPacket(OMT.Parse, out_);
 		cmd.put(statement);
 		cmd.put(sql);
-		cmd.put(cast(short)Args.length);
+		cmd.put!short(Args.length);
 		foreach (T; Args)
 			cmd.put(PgTypeof!T);
 		socket.write(cmd.data);
@@ -120,26 +125,26 @@ class Connection {
 
 	void bind(Args...)(in char[] portal, in char[] statement, auto ref Args args) @trusted
 	if (Args.length <= short.max) {
-		out_.length = 4 +
+		out_.length = 5 +
 			portal.length + 1 +
 			statement.length + 1 +
 			2 + 2 * Args.length +
 			2 + 4 * Args.length +
 			2 + 2;
-		auto cmd = OutputPacket(OutputMessageType.Bind, out_);
+		auto cmd = OutputPacket(OMT.Bind, out_);
 		cmd.put(portal);
 		cmd.put(statement);
 		cmd.put!short(1);
 		cmd.put(FormatCode.Binary);
-		cmd.put(cast(short)Args.length);
-		foreach (i, ref arg; args) {
+		cmd.put!short(Args.length);
+		foreach (i, arg; args) {
 			enum U = PgTypeof!(Args[i]);
 			static assert(U != PgType.UNKNOWN, "Unrecognized type " ~ Args[i].stringof);
-			static if (is(U == PgType.NULL))
+			static if (U == PgType.NULL)
 				cmd.put(-1);
 			else static if (isArray!(Args[i])) {
 				if (arg.length >= int.max)
-					throw new PgSQLException("array is too long to serialize");
+					throw new PgSQLException("array is too long to bind");
 				cmd.put(cast(int)arg.length);
 				cmd.put(cast(ubyte[])arg);
 			} else {
@@ -153,20 +158,20 @@ class Connection {
 	}
 
 	void describe(in char[] name = "", DescribeType type = DescribeType.Statement) {
-		out_.length = 1 + 4 + 1 + name.length + 1;
-		auto cmd = OutputPacket(OutputMessageType.Describe, out_);
+		out_.length = 5 + 1 + name.length + 1;
+		auto cmd = OutputPacket(OMT.Describe, out_);
 		cmd.put(type);
 		cmd.put(name);
 		socket.write(cmd.data);
 	}
 
 	void flush() {
-		enum ubyte[5] buf = [OutputMessageType.Flush, 0, 0, 0, 4];
+		enum ubyte[5] buf = [OMT.Flush, 0, 0, 0, 4];
 		socket.write(buf);
 	}
 
 	void sync() {
-		enum ubyte[5] buf = [OutputMessageType.Sync, 0, 0, 0, 4];
+		enum ubyte[5] buf = [OMT.Sync, 0, 0, 0, 4];
 		socket.write(buf);
 	}
 
@@ -184,13 +189,13 @@ class Connection {
 	}
 
 	void close(DescribeType type, in char[] name = "") {
-		out_.length = 1 + 4 + 1 + name.length + 1;
-		auto cmd = OutputPacket(OutputMessageType.Close, out_);
+		out_.length = 5 + 1 + name.length + 1;
+		auto cmd = OutputPacket(OMT.Close, out_);
 		cmd.put(type);
 		cmd.put(name);
 		socket.write(cmd.data);
 		flush();
-		eatStatuses(InputMessageType.CloseComplete);
+		eatStatuses(IMT.CloseComplete);
 	}
 
 	bool begin() {
@@ -238,7 +243,7 @@ class Connection {
 			socket.close();
 			socket = null;
 		}
-		enum ubyte[5] terminateMsg = [OutputMessageType.Terminate, 0, 0, 0, 4];
+		enum ubyte[5] terminateMsg = [OMT.Terminate, 0, 0, 0, 4];
 		if (sendTerminate)
 			try
 				socket.write(terminateMsg);
@@ -269,14 +274,14 @@ private:
 	void connect() {
 		socket = new Socket(settings_.host, settings_.port);
 
-		out_.length = 4 + 4 +
+		out_.length = 5 + 4 +
 			"user".length + 1 + settings_.user.length + 1 +
-			(settings_.db != "" ? "database".length + 1 + settings_.db.length + 1 : 0) + 1;
+			(settings_.db.length ? "database".length + 1 + settings_.db.length + 1 : 0);
 		auto startup = OutputPacket(out_);
 		startup.put(0x00030000u);
 		startup.put("user");
 		startup.put(settings_.user);
-		if (settings_.db != "") {
+		if (settings_.db.length) {
 			startup.put("database");
 			startup.put(settings_.db);
 		}
@@ -285,13 +290,13 @@ private:
 
 		if (eatAuth(retrieve()))
 			eatAuth(retrieve());
-		eatBackendKeyData(eatStatuses(InputMessageType.BackendKeyData));
+		eatBackendKeyData(eatStatuses(IMT.BackendKeyData));
 		eatStatuses();
 	}
 
 	void sendExecute(string portal = "", int rowLimit = 0) {
-		out_.length = 1 + 4 + portal.length + 1 + 4;
-		auto cmd = OutputPacket(OutputMessageType.Execute, out_);
+		out_.length = 5 + portal.length + 1 + 4;
+		auto cmd = OutputPacket(OMT.Execute, out_);
 		cmd.put(portal);
 		cmd.put(rowLimit);
 		socket.write(cmd.data);
@@ -338,18 +343,18 @@ private:
 	}
 
 	package void eatStatuses() {
-		while (eatStatus(retrieve()) != InputMessageType.ReadyForQuery) {
+		while (eatStatus(retrieve()) != IMT.ReadyForQuery) {
 		}
 	}
 
-	package auto eatStatuses(InputMessageType type, bool syncOnError = false) @trusted {
+	package auto eatStatuses(IMT type, bool syncOnError = false) @trusted {
 		InputPacket packet = void;
 		do {
 			packet = retrieve();
 			if (packet.type == type)
 				break;
 		}
-		while (eatStatus(packet, syncOnError) != InputMessageType.ReadyForQuery);
+		while (eatStatus(packet, syncOnError) != IMT.ReadyForQuery);
 		return packet;
 	}
 
@@ -359,15 +364,15 @@ private:
 		scope (failure)
 			disconnect();
 
-		auto type = cast(InputMessageType)packet.type;
-		switch (type) with (InputMessageType) {
+		auto type = cast(IMT)packet.type;
+		switch (type) with (IMT) {
 		case Authentication:
 			auto auth = packet.eat!uint;
 			version (NoMD5Auth)
-				out_.length = 1 + 4 + settings_.pwd.length + 1;
+				out_.length = 5 + settings_.pwd.length + 1;
 			else
-				out_.length = 1 + 4 + max(settings_.pwd.length, 3 + 32) + 1; // 3 for md5 and 32 is hash size
-			auto reply = OutputPacket(OutputMessageType.PasswordMessage, out_);
+				out_.length = 5 + max(settings_.pwd.length, 3 + 32) + 1; // 3 for md5 and 32 is hash size
+			auto reply = OutputPacket(OMT.PasswordMessage, out_);
 
 			switch (auth) {
 			case 0:
@@ -418,7 +423,7 @@ private:
 	}
 
 	void eatParameterStatus(ref InputPacket packet)
-	in (packet.type == InputMessageType.ParameterStatus)
+	in (packet.type == IMT.ParameterStatus)
 	out (; packet.empty) {
 		auto name = packet.eatz();
 		auto value = packet.eatz();
@@ -435,13 +440,13 @@ private:
 	}
 
 	void eatBackendKeyData(InputPacket packet)
-	in (packet.type == InputMessageType.BackendKeyData) {
+	in (packet.type == IMT.BackendKeyData) {
 		server.processId = packet.eat!uint;
 		server.cancellationKey = packet.eat!uint;
 	}
 
 	void eatNoticeResponse(ref InputPacket packet)
-	in (packet.type == InputMessageType.NoticeResponse || packet.type == InputMessageType
+	in (packet.type == IMT.NoticeResponse || packet.type == IMT
 		.ErrorResponse) {
 		Notice notice;
 		auto field = packet.eat!ubyte;
@@ -488,12 +493,12 @@ private:
 	}
 
 	void eatNotification(ref InputPacket packet)
-	in (packet.type == InputMessageType.NotificationResponse) {
+	in (packet.type == IMT.NotificationResponse) {
 		notifications_ ~= Notification(packet.eat!int, packet.eatz(), packet.eatz());
 	}
 
 	void eatCommandComplete(ref InputPacket packet)
-	in (packet.type == InputMessageType.CommandComplete) {
+	in (packet.type == IMT.CommandComplete) {
 		import std.algorithm : swap;
 
 		auto tag = packet.eatz();
@@ -523,8 +528,8 @@ private:
 	}
 
 	auto eatStatus(InputPacket packet, bool syncOnError = false) {
-		auto type = cast(InputMessageType)packet.type;
-		switch (type) with (InputMessageType) {
+		IMT type = cast(IMT)packet.type;
+		switch (type) with (IMT) {
 		case ParameterStatus:
 			eatParameterStatus(packet);
 			break;

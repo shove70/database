@@ -458,8 +458,8 @@ private:
 		auto id = packet.peek!ubyte;
 
 		switch (id) {
-		case StatusPackets.ERR_Packet:
-		case StatusPackets.OK_Packet:
+		case StatusPackets.ERR_Packet,
+			StatusPackets.OK_Packet:
 			return true;
 		default:
 			return false;
@@ -470,8 +470,8 @@ private:
 		auto id = packet.peek!ubyte;
 
 		switch (id) {
-		case StatusPackets.ERR_Packet:
-		case StatusPackets.OK_Packet:
+		case StatusPackets.ERR_Packet,
+			StatusPackets.OK_Packet:
 			eatStatus(packet, smallError);
 			break;
 		default:
@@ -643,11 +643,11 @@ private:
 								schema_.length = cast(size_t)packet.eatLenEnc();
 								schema_[] = packet.eat!(const(char)[])(schema_.length);
 								break;
-							case SESSION_TRACK_SYSTEM_VARIABLES:
-							case SESSION_TRACK_GTIDS:
-							case SESSION_TRACK_STATE_CHANGE:
-							case SESSION_TRACK_TRANSACTION_STATE:
-							case SESSION_TRACK_TRANSACTION_CHARACTERISTICS:
+							case SESSION_TRACK_SYSTEM_VARIABLES,
+								SESSION_TRACK_GTIDS,
+								SESSION_TRACK_STATE_CHANGE,
+								SESSION_TRACK_TRANSACTION_STATE,
+								SESSION_TRACK_TRANSACTION_CHARACTERISTICS:
 								packet.skip(cast(size_t)packet.eatLenEnc());
 								break;
 							}
@@ -693,8 +693,8 @@ private:
 			info(packet.eat!(const(char)[])(packet.remaining));
 
 			switch (status_.error) {
-			case ErrorCodes.ER_DUP_ENTRY_WITH_KEY_NAME:
-			case ErrorCodes.ER_DUP_ENTRY:
+			case ErrorCodes.ER_DUP_ENTRY_WITH_KEY_NAME,
+				ErrorCodes.ER_DUP_ENTRY:
 				throw new MySQLDuplicateEntryException(info_.idup);
 			case ErrorCodes.ER_DATA_TOO_LONG_FOR_COL:
 				throw new MySQLDataTooLongException(info_.idup);
@@ -826,7 +826,7 @@ private:
 			const auto bit = (i + 2) & 7;
 
 			if ((nulls[index] & (1 << bit)) == 0) {
-				eatValue(packet, column, row.get_(i));
+				row.get_(i) = eatValue(packet, column);
 			} else {
 				auto signed = (column.flags & FieldFlags.UNSIGNED_FLAG) == 0;
 				row.get_(i) = MySQLValue(column.name, ColumnTypes.MYSQL_TYPE_NULL, signed, null, 0);
@@ -897,7 +897,7 @@ private:
 
 		foreach (i, ref column; header) {
 			if (packet.peek!ubyte != 0xfb) {
-				eatValueText(packet, column, row.get_(i));
+				row.get_(i) = eatValueText(packet, column);
 			} else {
 				packet.skip(1);
 				auto signed = (column.flags & FieldFlags.UNSIGNED_FLAG) == 0;
@@ -989,12 +989,12 @@ private:
 				case MYSQL_TYPE_TINY:
 					estimated += 4;
 					break;
-				case MYSQL_TYPE_YEAR:
-				case MYSQL_TYPE_SHORT:
+				case MYSQL_TYPE_YEAR,
+					MYSQL_TYPE_SHORT:
 					estimated += 6;
 					break;
-				case MYSQL_TYPE_INT24:
-				case MYSQL_TYPE_LONG:
+				case MYSQL_TYPE_INT24,
+					MYSQL_TYPE_LONG:
 					estimated += 6;
 					break;
 				case MYSQL_TYPE_LONGLONG:
@@ -1006,32 +1006,32 @@ private:
 				case MYSQL_TYPE_DOUBLE:
 					estimated += 8;
 					break;
-				case MYSQL_TYPE_SET:
-				case MYSQL_TYPE_ENUM:
-				case MYSQL_TYPE_VARCHAR:
-				case MYSQL_TYPE_VAR_STRING:
-				case MYSQL_TYPE_STRING:
-				case MYSQL_TYPE_JSON:
-				case MYSQL_TYPE_NEWDECIMAL:
-				case MYSQL_TYPE_DECIMAL:
-				case MYSQL_TYPE_TINY_BLOB:
-				case MYSQL_TYPE_MEDIUM_BLOB:
-				case MYSQL_TYPE_LONG_BLOB:
-				case MYSQL_TYPE_BLOB:
-				case MYSQL_TYPE_BIT:
-				case MYSQL_TYPE_GEOMETRY:
+				case MYSQL_TYPE_SET,
+					MYSQL_TYPE_ENUM,
+					MYSQL_TYPE_VARCHAR,
+					MYSQL_TYPE_VAR_STRING,
+					MYSQL_TYPE_STRING,
+					MYSQL_TYPE_JSON,
+					MYSQL_TYPE_NEWDECIMAL,
+					MYSQL_TYPE_DECIMAL,
+					MYSQL_TYPE_TINY_BLOB,
+					MYSQL_TYPE_MEDIUM_BLOB,
+					MYSQL_TYPE_LONG_BLOB,
+					MYSQL_TYPE_BLOB,
+					MYSQL_TYPE_BIT,
+					MYSQL_TYPE_GEOMETRY:
 					estimated += 2 + arg.peek!(const(char)[]).length;
 					break;
-				case MYSQL_TYPE_TIME:
-				case MYSQL_TYPE_TIME2:
+				case MYSQL_TYPE_TIME,
+					MYSQL_TYPE_TIME2:
 					estimated += 18;
 					break;
-				case MYSQL_TYPE_DATE:
-				case MYSQL_TYPE_NEWDATE:
-				case MYSQL_TYPE_DATETIME:
-				case MYSQL_TYPE_DATETIME2:
-				case MYSQL_TYPE_TIMESTAMP:
-				case MYSQL_TYPE_TIMESTAMP2:
+				case MYSQL_TYPE_DATE,
+					MYSQL_TYPE_NEWDATE,
+					MYSQL_TYPE_DATETIME,
+					MYSQL_TYPE_DATETIME2,
+					MYSQL_TYPE_TIMESTAMP,
+					MYSQL_TYPE_TIMESTAMP2:
 					estimated += 20;
 					break;
 				}
@@ -1141,9 +1141,9 @@ private auto copyUpToNext(ref Appender!(char[]) app, ref const(char)[] sql) {
 			} else {
 				goto default;
 			}
-		case '\'':
-		case '\"':
-		case '`':
+		case '\'',
+			'\"',
+			'`':
 			if (quote == ch) {
 				quote = '\0';
 			} else if (!quote) {

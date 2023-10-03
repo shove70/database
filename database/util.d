@@ -236,11 +236,11 @@ template InputPacketMethods(E : Exception) {
 		}
 		throw new E("Bad packet format");
 	}
+	// dfmt on
 
 	auto remaining() const => in_.length;
 
 	bool empty() const => in_.length == 0;
-	// dfmt on
 }
 
 template OutputPacketMethods() {

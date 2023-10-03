@@ -1,12 +1,12 @@
 module database.postgresql.packet;
 
-import database.postgresql.protocol,
+import core.stdc.stdlib,
+database.postgresql.protocol,
 database.util,
 std.algorithm,
 std.datetime,
 std.meta,
 std.traits;
-import core.stdc.string : strlen;
 
 package import database.postgresql.exception;
 
@@ -39,13 +39,12 @@ struct InputPacket {
 	T eat(T : DateTime)() // timestamp
 	=> PGEpochDateTime + dur!"usecs"(eat!long);
 
-	T eat(T : SysTime)() { // timestamptz
-		T x = T(PGEpochDateTime + dur!"usecs"(eat!long), UTC());
-		x.timezone = null;
-		return x;
-	}
+	T eat(T : SysTime)() // timestamptz
+	=> T(PGEpochDateTime + dur!"usecs"(eat!long));
 
 	auto eatz() @trusted {
+		import core.stdc.string;
+
 		auto len = strlen(cast(char*)in_.ptr);
 		auto result = cast(char[])in_[0 .. len];
 		in_ = in_[len + 1 .. $];
@@ -70,6 +69,7 @@ private:
 
 struct OutputPacket {
 	@disable this();
+	@disable this(this);
 
 	this(ref ubyte[] buffer) @trusted {
 		buf = &buffer;
@@ -97,17 +97,19 @@ struct OutputPacket {
 	void put(Date x)
 		=> put(x.dayOfGregorianCal - PGEpochDay);
 
-	void put(in TimeOfDay x)
+	void put(TimeOfDay x)
 		=> put(cast(int)(x - PGEpochTime).total!"usecs");
 
-	void put(in DateTime x) // timestamp
+	void put(DateTime x) // timestamp
 	=> put(cast(int)(x - PGEpochDateTime).total!"usecs");
 
 	void put(in SysTime x) // timestamptz
 	=> put(cast(int)(x - SysTime(PGEpochDateTime, UTC())).total!"usecs");
 
-	ubyte[] data() {
-		finalize();
+	ubyte[] data() @trusted {
+		if (pos + implicit > int.max)
+			throw new PgSQLConnectionException("Packet size exceeds 2^31");
+		*cast(uint*)(buf.ptr + implicit - 4) = native(cast(uint)pos + 4);
 		return (*buf)[0 .. implicit + pos];
 	}
 
@@ -144,12 +146,6 @@ private:
 			buf.length = capacity;
 			out_ = buf.ptr + implicit;
 		}
-	}
-
-	void finalize() @trusted {
-		if (pos + implicit > int.max)
-			throw new PgSQLConnectionException("Packet size exceeds 2^31");
-		*cast(uint*)(buf.ptr + implicit - 4) = native(cast(uint)pos + 4);
 	}
 
 	ubyte[]* buf;

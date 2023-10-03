@@ -64,7 +64,6 @@ struct PgSQLValue {
 		p = value ? 't' : 'f';
 	}
 
-	// dfmt off
 	this(T)(T value) @trusted if (isScalarType!T && !isBoolean!T) {
 		static if (isFloatingPoint!T) {
 			static assert(T.sizeof <= 8, "Unsupported type: " ~ T.stringof);
@@ -116,10 +115,7 @@ struct PgSQLValue {
 	}
 
 	void toString(R)(ref R app) @trusted const {
-		switch(type_) with (PgType) {
-		case UNKNOWN:
-		case NULL:
-			break;
+		switch (type_) with (PgType) {
 		case BOOL:
 			app.put(*cast(bool*)&p ? "TRUE" : "FALSE");
 			break;
@@ -141,20 +137,20 @@ struct PgSQLValue {
 		case DOUBLE:
 			app.formattedWrite("%g", *cast(double*)&p);
 			break;
-		case POINT, LSEG, PATH, BOX, POLYGON, LINE:
-		case TINTERVAL:
-		case CIRCLE:
-		case JSONB:
-		case BYTEA:
+		case POINT, LSEG, PATH, BOX, POLYGON, LINE,
+			TINTERVAL,
+			CIRCLE,
+			JSONB,
+		BYTEA:
 			app.formattedWrite("%s", arr);
 			break;
-		case MONEY:
-		case TEXT, NAME:
-		case BIT, VARBIT:
-		case NUMERIC:
-		case INET, CIDR, MACADDR, MACADDR8:
-		case UUID, JSON, XML:
-		case CHARA, VARCHAR:
+		case MONEY,
+			TEXT, NAME,
+			BIT, VARBIT,
+			NUMERIC,
+			INET, CIDR, MACADDR, MACADDR8,
+			UUID, JSON, XML,
+			CHARA, VARCHAR:
 			app.put(*cast(string*)&p);
 			break;
 		case DATE:
@@ -195,6 +191,7 @@ struct PgSQLValue {
 
 	T get(T)(lazy T def) const => !isNull ? get!T : def;
 
+	// dfmt off
 	T get(T)() @trusted const if (isScalarType!T && !is(T == enum)) {
 		switch(type_) with (PgType) {
 		case CHAR: return cast(T)*cast(char*)&p;
@@ -207,6 +204,7 @@ struct PgSQLValue {
 		}
 		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
+	// dfmt on
 
 	T get(T : SysTime)() @trusted const {
 		switch (type_) with (PgType) {
@@ -214,7 +212,8 @@ struct PgSQLValue {
 			return timestamp.toSysTime;
 		default:
 		}
-		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
+		throw new PgSQLErrorException("Cannot convert %s to %s".format(
+				type_.columnTypeName, T.stringof));
 	}
 
 	T get(T : DateTime)() @trusted const {
@@ -223,7 +222,8 @@ struct PgSQLValue {
 			return timestamp.toDateTime;
 		default:
 		}
-		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
+		throw new PgSQLErrorException("Cannot convert %s to %s".format(
+				type_.columnTypeName, T.stringof));
 	}
 
 	T get(T : TimeOfDay)() @trusted const {
@@ -234,42 +234,45 @@ struct PgSQLValue {
 			return timestamp.toTimeOfDay;
 		default:
 		}
-		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
+		throw new PgSQLErrorException("Cannot convert %s to %s".format(
+				type_.columnTypeName, T.stringof));
 	}
 
 	T get(T : Duration)() @trusted const {
 		switch (type_) with (PgType) {
-		case TIME, TIMETZ:
-		case TIMESTAMP, TIMESTAMPTZ:
+		case TIME, TIMETZ,
+			TIMESTAMP, TIMESTAMPTZ:
 			return timestamp.time.toDuration;
 		default:
 		}
-		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
+		throw new PgSQLErrorException("Cannot convert %s to %s".format(
+				type_.columnTypeName, T.stringof));
 	}
 
 	T get(T)() @trusted const if (is(T : Date)) {
 		switch (type_) with (PgType) {
-		case DATE:
-		case TIMESTAMP, TIMESTAMPTZ:
+		case DATE,
+			TIMESTAMP, TIMESTAMPTZ:
 			return timestamp.date;
 		default:
 		}
-		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
+		throw new PgSQLErrorException("Cannot convert %s to %s".format(
+				type_.columnTypeName, T.stringof));
 	}
 
 	T get(T)() const if (is(T == enum))
-	=> cast(T)get!(OriginalType!T);
+		=> cast(T)get!(OriginalType!T);
 
 	T get(T)() const @trusted if (isArray!T && !is(T == enum)) {
-		switch(type_) with (PgType) {
-		case NUMERIC:
-		case MONEY:
-		case BIT, VARBIT:
-		case INET, CIDR, MACADDR, MACADDR8:
-		case UUID, JSON, XML:
-		case TEXT, NAME:
-		case VARCHAR, CHARA:
-		case BYTEA:
+		switch (type_) with (PgType) {
+		case NUMERIC,
+			MONEY,
+			BIT, VARBIT,
+			INET, CIDR, MACADDR, MACADDR8,
+			UUID, JSON, XML,
+			TEXT, NAME,
+			VARCHAR, CHARA,
+		BYTEA:
 			static if (isStaticArray!T)
 				return cast(T)arr[0 .. T.sizeof];
 			else
@@ -284,14 +287,14 @@ struct PgSQLValue {
 	T peek(T)() const if (is(T == struct) || isStaticArray!T) => get!T;
 
 	T peek(T)() @trusted const if (is(T == U[], U)) {
-		switch(type_) with (PgType) {
-		case NUMERIC:
-		case MONEY:
-		case BIT, VARBIT:
-		case INET, CIDR, MACADDR, MACADDR8:
-		case UUID, JSON, XML:
-		case TEXT, NAME:
-		case VARCHAR, CHARA:
+		switch (type_) with (PgType) {
+		case NUMERIC,
+			MONEY,
+			BIT, VARBIT,
+			INET, CIDR, MACADDR, MACADDR8,
+			UUID, JSON, XML,
+			TEXT, NAME,
+			VARCHAR, CHARA:
 			return cast(T)arr;
 		default:
 		}
@@ -299,7 +302,7 @@ struct PgSQLValue {
 	}
 
 	size_t toHash() const @nogc @trusted pure nothrow
-	=> *cast(size_t*)&p ^ (type_ << 24);
+		=> *cast(size_t*)&p ^ (type_ << 24);
 
 	@property nothrow @nogc {
 
@@ -310,14 +313,14 @@ struct PgSQLValue {
 		PgType type() const => type_;
 
 		bool isString() const {
-			switch(type_) with (PgType) {
-			case NUMERIC:
-			case MONEY:
-			case BIT, VARBIT:
-			case INET, CIDR, MACADDR, MACADDR8:
-			case UUID, JSON, XML:
-			case TEXT, NAME:
-			case VARCHAR, CHARA:
+			switch (type_) with (PgType) {
+			case NUMERIC,
+				MONEY,
+				BIT, VARBIT,
+				INET, CIDR, MACADDR, MACADDR8,
+				UUID, JSON, XML,
+				TEXT, NAME,
+				VARCHAR, CHARA:
 				return true;
 			default:
 			}
@@ -325,10 +328,10 @@ struct PgSQLValue {
 		}
 
 		bool isScalar() const {
-			switch(type_) with (PgType) {
-			case BOOL, CHAR:
-			case INT2, INT4, INT8:
-			case REAL, DOUBLE:
+			switch (type_) with (PgType) {
+			case BOOL, CHAR,
+				INT2, INT4, INT8,
+				REAL, DOUBLE:
 				return true;
 			default:
 			}
@@ -343,7 +346,6 @@ struct PgSQLValue {
 
 		bool isTimestamp() const => type_ == PgType.TIMESTAMP || type_ == PgType.TIMESTAMPTZ;
 	}
-	// dfmt on
 
 private:
 	static if (size_t.sizeof == 8) {

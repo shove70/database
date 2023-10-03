@@ -104,16 +104,16 @@ void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == MySQLValue)) 
 			appendValue(appender, value.peek!ubyte);
 		}
 		break;
-	case MYSQL_TYPE_YEAR:
-	case MYSQL_TYPE_SHORT:
+	case MYSQL_TYPE_YEAR,
+		MYSQL_TYPE_SHORT:
 		if (value.isSigned) {
 			appendValue(appender, value.peek!short);
 		} else {
 			appendValue(appender, value.peek!ushort);
 		}
 		break;
-	case MYSQL_TYPE_INT24:
-	case MYSQL_TYPE_LONG:
+	case MYSQL_TYPE_INT24,
+		MYSQL_TYPE_LONG:
 		if (value.isSigned) {
 			appendValue(appender, value.peek!int);
 		} else {
@@ -133,34 +133,34 @@ void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == MySQLValue)) 
 	case MYSQL_TYPE_FLOAT:
 		appendValue(appender, value.peek!float);
 		break;
-	case MYSQL_TYPE_SET:
-	case MYSQL_TYPE_ENUM:
-	case MYSQL_TYPE_VARCHAR:
-	case MYSQL_TYPE_VAR_STRING:
-	case MYSQL_TYPE_STRING:
-	case MYSQL_TYPE_JSON:
-	case MYSQL_TYPE_NEWDECIMAL:
-	case MYSQL_TYPE_DECIMAL:
+	case MYSQL_TYPE_SET,
+		MYSQL_TYPE_ENUM,
+		MYSQL_TYPE_VARCHAR,
+		MYSQL_TYPE_VAR_STRING,
+		MYSQL_TYPE_STRING,
+		MYSQL_TYPE_JSON,
+		MYSQL_TYPE_NEWDECIMAL,
+		MYSQL_TYPE_DECIMAL:
 		appendValue(appender, value.peek!(char[]));
 		break;
-	case MYSQL_TYPE_BIT:
-	case MYSQL_TYPE_TINY_BLOB:
-	case MYSQL_TYPE_MEDIUM_BLOB:
-	case MYSQL_TYPE_LONG_BLOB:
-	case MYSQL_TYPE_BLOB:
-	case MYSQL_TYPE_GEOMETRY:
+	case MYSQL_TYPE_BIT,
+		MYSQL_TYPE_TINY_BLOB,
+		MYSQL_TYPE_MEDIUM_BLOB,
+		MYSQL_TYPE_LONG_BLOB,
+		MYSQL_TYPE_BLOB,
+		MYSQL_TYPE_GEOMETRY:
 		appendValue(appender, value.peek!(ubyte[]));
 		break;
-	case MYSQL_TYPE_TIME:
-	case MYSQL_TYPE_TIME2:
+	case MYSQL_TYPE_TIME,
+		MYSQL_TYPE_TIME2:
 		appendValue(appender, value.peek!Duration);
 		break;
-	case MYSQL_TYPE_DATE:
-	case MYSQL_TYPE_NEWDATE:
-	case MYSQL_TYPE_DATETIME:
-	case MYSQL_TYPE_DATETIME2:
-	case MYSQL_TYPE_TIMESTAMP:
-	case MYSQL_TYPE_TIMESTAMP2:
+	case MYSQL_TYPE_DATE,
+		MYSQL_TYPE_NEWDATE,
+		MYSQL_TYPE_DATETIME,
+		MYSQL_TYPE_DATETIME2,
+		MYSQL_TYPE_TIMESTAMP,
+		MYSQL_TYPE_TIMESTAMP2:
 		appendValue(appender, value.peek!SysTime);
 		break;
 	}
@@ -173,8 +173,8 @@ if (isArray!T && (is(Unqual!(typeof(T.init[0])) == ubyte) || is(Unqual!(typeof(T
 	auto end = value.ptr + value.length;
 	while (ptr != end) {
 		switch (*ptr) {
-		case '\\':
-		case '\'':
+		case '\\',
+			'\'':
 			appender.put('\\');
 			goto default;
 		default:
