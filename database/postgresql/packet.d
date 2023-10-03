@@ -1,12 +1,11 @@
 module database.postgresql.packet;
 
-// dfmt off
 import database.postgresql.protocol,
-	database.util,
-	std.algorithm,
-	std.datetime,
-	std.traits;
-// dfmt on
+database.util,
+std.algorithm,
+std.datetime,
+std.meta,
+std.traits;
 import core.stdc.string : strlen;
 
 package import database.postgresql.exception;
@@ -158,20 +157,18 @@ private:
 	size_t pos, implicit;
 }
 
-T native(T)(in T x) @trusted if (isScalarType!(OriginalType!T)) {
-	import core.bitop;
+package:
 
-	version (LittleEndian)
-		enum LE = true;
-	else
-		enum LE = false;
-	static if (T.sizeof > 1 && LE)
-		static if (T.sizeof == 2)
-			return cast(T)byteswap(x);
-		else static if (T.sizeof == 4)
-			return cast(T)bswap(*cast(const uint*)&x);
-		else
-			return cast(T)bswap(*cast(const ulong*)&x);
-	else
-		return x;
-}
+version (LittleEndian) {
+	import std.bitmanip : native = swapEndian;
+
+	T native(T)(T value) @trusted if (isFloatingPoint!T) {
+		union U {
+			AliasSeq!(int, long)[T.sizeof / 8] i;
+			T f;
+		}
+
+		return U(.native(*cast(typeof(U.i)*)&value)).f;
+	}
+} else
+	T native(T)(in T value) => value;

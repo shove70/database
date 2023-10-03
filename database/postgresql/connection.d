@@ -547,7 +547,8 @@ private:
 		case CommandComplete:
 			eatCommandComplete(packet);
 			break;
-		case EmptyQueryResponse, NoData, ParameterDescription, ParseComplete, BindComplete, PortalSuspended:
+		case EmptyQueryResponse, NoData, ParameterDescription,
+			ParseComplete, BindComplete, PortalSuspended:
 			break;
 		default:
 			throw new PgSQLProtocolException("Unexpected message: %s".format(type));

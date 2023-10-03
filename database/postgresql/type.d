@@ -12,39 +12,39 @@ public import database.util;
 enum isValueType(T) = !is(T == struct) || is(Unqual!T == PgSQLValue) ||
 	is(T : Date) || is(T : DateTime) || is(T : SysTime);
 
-template PgTypeof(T) if (is(T == enum)) {
-	static if (is(Unqual!T == PgType))
-		enum PgTypeof = PgType.OID;
-	else
-		enum PgTypeof = PgTypeof!(OriginalType!T);
-}
-
-template PgTypeof(T) if (!is(T == enum)) {
-	alias U = Unqual!T;
-	static if (is(T : typeof(null)))
-		enum PgTypeof = PgType.NULL;
-	else static if (isIntegral!T)
-		enum PgTypeof = [PgType.INT2, PgType.INT4, PgType.INT8][T.sizeof / 4];
-	else static if (isSomeString!T)
-		enum PgTypeof = PgType.TEXT;
-	else static if (is(U == float))
-		enum PgTypeof = PgType.REAL;
-	else static if (is(U == double))
-		enum PgTypeof = PgType.DOUBLE;
-	else static if (isSomeChar!T)
-		enum PgTypeof = PgType.CHAR;
-	else static if (is(U == Date))
-		enum PgTypeof = PgType.DATE;
-	else static if (is(U == TimeOfDay) || is(U == PgSQLTime))
-		enum PgTypeof = PgType.TIME;
-	else static if (is(U == DateTime) || is(U == PgSQLTimestamp))
-		enum PgTypeof = PgType.TIMESTAMP;
-	else static if (is(U == SysTime))
-		enum PgTypeof = PgType.TIMESTAMPTZ;
-	else static if (is(U == ubyte[]) || is(U : ubyte[n], size_t n))
-		enum PgTypeof = PgType.BYTEA;
-	else
-		enum PgTypeof = PgType.UNKNOWN;
+template PgTypeof(T) {
+	static if (is(T U == enum)) {
+		static if (is(Unqual!T == PgType))
+			enum PgTypeof = PgType.OID;
+		else
+			enum PgTypeof = PgTypeof!U;
+	} else {
+		alias U = Unqual!T;
+		static if (is(T : typeof(null)))
+			enum PgTypeof = PgType.NULL;
+		else static if (isIntegral!T)
+			enum PgTypeof = [PgType.INT2, PgType.INT4, PgType.INT8][T.sizeof / 4];
+		else static if (isSomeString!T)
+			enum PgTypeof = PgType.TEXT;
+		else static if (is(U == float))
+			enum PgTypeof = PgType.REAL;
+		else static if (is(U == double))
+			enum PgTypeof = PgType.DOUBLE;
+		else static if (isSomeChar!T)
+			enum PgTypeof = PgType.CHAR;
+		else static if (is(U == Date))
+			enum PgTypeof = PgType.DATE;
+		else static if (is(U == TimeOfDay) || is(U == PgSQLTime))
+			enum PgTypeof = PgType.TIME;
+		else static if (is(U == DateTime) || is(U == PgSQLTimestamp))
+			enum PgTypeof = PgType.TIMESTAMP;
+		else static if (is(U == SysTime))
+			enum PgTypeof = PgType.TIMESTAMPTZ;
+		else static if (is(U == ubyte[]) || is(U : ubyte[n], size_t n))
+			enum PgTypeof = PgType.BYTEA;
+		else
+			enum PgTypeof = PgType.UNKNOWN;
+	}
 }
 
 @safe pure:
