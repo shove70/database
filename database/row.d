@@ -11,7 +11,7 @@ struct Row(Value, Header, E:
 	Exception, alias hashOf, alias Mixin) {
 	import std.algorithm;
 	import std.traits;
-	import std.format : format, formattedWrite;
+	import std.format : format;
 
 	ref auto opDispatch(string key)() const => this[key];
 
@@ -62,15 +62,16 @@ struct Row(Value, Header, E:
 
 	string[] toStringArray(size_t start = 0, size_t end = size_t.max) const
 	in (start <= end) {
+		import std.array;
+
 		if (end > values.length)
 			end = values.length;
 		if (start > values.length)
 			start = values.length;
 
-		string[] result;
-		result.length = end - start;
+		string[] result = uninitializedArray!(string[])(end - start);
 		foreach (i, ref s; result)
-			s = values[i].toString;
+			s = values[i].toString();
 		return result;
 	}
 
@@ -78,12 +79,12 @@ struct Row(Value, Header, E:
 	if (isAggregateType!T) {
 		import std.typecons;
 
-		static if (isTuple!(Unqual!T)) {
+		static if (isTuple!T) {
 			static if (strict != Strict.no)
 				if (x.length >= values.length)
 					throw new PgSQLErrorException(
 						"Column %s is out of range for this result set".format(x.length));
-			static foreach (i, ref f; x.tupleof) {
+			foreach (i, ref f; x.tupleof) {
 				static if (strict != Strict.yes) {
 					if (!this[i].isNull)
 						f = this[i].get!(Unqual!(typeof(f)));

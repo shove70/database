@@ -133,9 +133,8 @@ private:
 
 		if (requested > buf.length) {
 			auto capacity = max(128, (*buf).capacity);
-			while (capacity < requested) {
+			while (capacity < requested)
 				capacity <<= 1;
-			}
 
 			buf.length = capacity;
 			out_ = buf.ptr + 4;

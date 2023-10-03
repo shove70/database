@@ -4,14 +4,13 @@ import core.bitop : bsr;
 import database.postgresql.protocol;
 import database.postgresql.packet;
 import database.postgresql.row;
-import std.algorithm;
 import std.datetime;
 import std.format : format, formattedWrite;
 import std.traits;
 public import database.util;
 
 enum isValueType(T) = !is(T == struct) || is(Unqual!T == PgSQLValue) ||
-	is(Unqual!T == Date) || is(Unqual!T == DateTime) || is(Unqual!T == SysTime);
+	is(T : Date) || is(T : DateTime) || is(T : SysTime);
 
 template PgTypeof(T) if (is(T == enum)) {
 	static if (is(Unqual!T == PgType))
@@ -21,33 +20,30 @@ template PgTypeof(T) if (is(T == enum)) {
 }
 
 template PgTypeof(T) if (!is(T == enum)) {
-	static if (is(T)) {
-		alias U = Unqual!T;
-		static if (is(U : typeof(null)))
-			enum PgTypeof = PgType.NULL;
-		else static if (isIntegral!T)
-			enum PgTypeof = [PgType.INT2, PgType.INT4, PgType.INT8][T.sizeof / 4];
-		else static if (isSomeString!T)
-			enum PgTypeof = PgType.TEXT;
-		else static if (is(U == float))
-			enum PgTypeof = PgType.REAL;
-		else static if (is(U == double))
-			enum PgTypeof = PgType.DOUBLE;
-		else static if (isSomeChar!T)
-			enum PgTypeof = PgType.CHAR;
-		else static if (is(U == Date))
-			enum PgTypeof = PgType.DATE;
-		else static if (is(U == TimeOfDay) || is(U == PgSQLTime))
-			enum PgTypeof = PgType.TIME;
-		else static if (is(U == DateTime) || is(U == PgSQLTimestamp))
-			enum PgTypeof = PgType.TIMESTAMP;
-		else static if (is(U == SysTime))
-			enum PgTypeof = PgType.TIMESTAMPTZ;
-		else static if (is(U == ubyte[]) || is(U : ubyte[n], size_t n))
-			enum PgTypeof = PgType.BYTEA;
-		else
-			enum PgTypeof = PgType.UNKNOWN;
-	} else
+	alias U = Unqual!T;
+	static if (is(T : typeof(null)))
+		enum PgTypeof = PgType.NULL;
+	else static if (isIntegral!T)
+		enum PgTypeof = [PgType.INT2, PgType.INT4, PgType.INT8][T.sizeof / 4];
+	else static if (isSomeString!T)
+		enum PgTypeof = PgType.TEXT;
+	else static if (is(U == float))
+		enum PgTypeof = PgType.REAL;
+	else static if (is(U == double))
+		enum PgTypeof = PgType.DOUBLE;
+	else static if (isSomeChar!T)
+		enum PgTypeof = PgType.CHAR;
+	else static if (is(U == Date))
+		enum PgTypeof = PgType.DATE;
+	else static if (is(U == TimeOfDay) || is(U == PgSQLTime))
+		enum PgTypeof = PgType.TIME;
+	else static if (is(U == DateTime) || is(U == PgSQLTimestamp))
+		enum PgTypeof = PgType.TIMESTAMP;
+	else static if (is(U == SysTime))
+		enum PgTypeof = PgType.TIMESTAMPTZ;
+	else static if (is(U == ubyte[]) || is(U : ubyte[n], size_t n))
+		enum PgTypeof = PgType.BYTEA;
+	else
 		enum PgTypeof = PgType.UNKNOWN;
 }
 
@@ -212,7 +208,7 @@ struct PgSQLValue {
 		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
 
-	T get(T)() @trusted const if (is(Unqual!T == SysTime)) {
+	T get(T : SysTime)() @trusted const {
 		switch (type_) with (PgType) {
 		case TIMESTAMP, TIMESTAMPTZ:
 			return timestamp.toSysTime;
@@ -251,7 +247,7 @@ struct PgSQLValue {
 		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
 	}
 
-	T get(T)() @trusted const if (is(Unqual!T == Date)) {
+	T get(T)() @trusted const if (is(T : Date)) {
 		switch (type_) with (PgType) {
 		case DATE:
 		case TIMESTAMP, TIMESTAMPTZ:

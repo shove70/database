@@ -4,7 +4,6 @@ import core.thread;
 import std.concurrency;
 import std.datetime;
 import std.exception : enforce;
-import std.traits;
 
 final class ConnectionProvider(Connection, alias flags) {
 	private alias ConnectionPool = typeof(this),

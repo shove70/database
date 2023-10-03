@@ -29,7 +29,7 @@ void appendValue(R, T)(ref R appender, T value) if (isScalarType!T) {
 	appender.put(cast(ubyte[])to!string(value));
 }
 
-void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == SysTime)) {
+void appendValue(R)(ref R appender, SysTime value) {
 	value = value.toUTC;
 
 	auto hour = value.hour;
@@ -45,7 +45,7 @@ void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == SysTime)) {
 	}
 }
 
-void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == DateTime)) {
+void appendValue(R)(ref R appender, DateTime value) {
 	auto hour = value.hour;
 	auto minute = value.minute;
 	auto second = value.second;
@@ -57,15 +57,15 @@ void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == DateTime)) {
 	}
 }
 
-void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == TimeOfDay)) {
+void appendValue(R)(ref R appender, TimeOfDay value) {
 	formattedWrite(appender, "%02d%02d%02d", value.hour, value.minute, value.second);
 }
 
-void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == Date)) {
+void appendValue(R)(ref R appender, Date value) {
 	formattedWrite(appender, "%04d%02d%02d", value.year, value.month, value.day);
 }
 
-void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == Duration)) {
+void appendValue(R)(ref R appender, Duration value) {
 	auto parts = value.split();
 	if (parts.days) {
 		appender.put('\'');
