@@ -191,13 +191,13 @@ template InputPacketMethods(E : Exception) {
 	}
 
 	void skip(size_t count)
-	in (count <= in_.length) {
-		in_ = in_[count .. $];
+	in (count <= buf.length) {
+		buf = buf[count .. $];
 	}
 
 	auto countUntil(ubyte x, bool expect) {
-		auto index = in_.countUntil(x);
-		if (expect && (index < 0 || in_[index] != x))
+		auto index = buf.countUntil(x);
+		if (expect && (index < 0 || buf[index] != x))
 			throw new E("Bad packet format");
 		return index;
 	}
@@ -238,9 +238,9 @@ template InputPacketMethods(E : Exception) {
 	}
 	// dfmt on
 
-	auto remaining() const => in_.length;
+	auto remaining() const => buf.length;
 
-	bool empty() const => in_.length == 0;
+	bool empty() const => buf.length == 0;
 }
 
 template OutputPacketMethods() {

@@ -9,48 +9,47 @@ struct InputPacket {
 	@disable this();
 
 	this(ubyte[]* buffer) {
-		buf = buffer;
-		in_ = *buf;
+		buf = *buffer;
 	}
 
 	T peek(T)() if (!isArray!T) {
-		assert(T.sizeof <= in_.length);
-		return *(cast(T*)in_.ptr);
+		assert(T.sizeof <= buf.length);
+		return *(cast(T*)buf.ptr);
 	}
 
 	T eat(T)() if (!isArray!T) {
-		assert(T.sizeof <= in_.length);
-		auto ptr = cast(T*)in_.ptr;
-		in_ = in_[T.sizeof .. $];
+		assert(T.sizeof <= buf.length);
+		auto ptr = cast(T*)buf.ptr;
+		buf = buf[T.sizeof .. $];
 		return *ptr;
 	}
 
 	T peek(T)(size_t count) if (isArray!T) {
 		alias ValueType = typeof(Type.init[0]);
 
-		assert(ValueType.sizeof * count <= in_.length);
-		auto ptr = cast(ValueType*)in_.ptr;
+		assert(ValueType.sizeof * count <= buf.length);
+		auto ptr = cast(ValueType*)buf.ptr;
 		return ptr[0 .. count];
 	}
 
 	T eat(T)(size_t count) if (isArray!T) {
 		alias ValueType = typeof(T.init[0]);
 
-		assert(ValueType.sizeof * count <= in_.length);
-		auto ptr = cast(ValueType*)in_.ptr;
-		in_ = in_[ValueType.sizeof * count .. $];
+		assert(ValueType.sizeof * count <= buf.length);
+		auto ptr = cast(ValueType*)buf.ptr;
+		buf = buf[ValueType.sizeof * count .. $];
 		return ptr[0 .. count];
 	}
 
 	mixin InputPacketMethods!MySQLProtocolException;
 
 private:
-	ubyte[]* buf;
-	ubyte[] in_;
+	ubyte[] buf;
 }
 
 struct OutputPacket {
 	@disable this();
+	@disable this(this);
 
 	this(ubyte[]* buffer) {
 		buf = buffer;

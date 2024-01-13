@@ -113,7 +113,7 @@ struct Statement {
 	mixin Manager!(stmt, sqlite3_finalize);
 
 	/// Construct a query from the string 'sql' into database 'db'
-	this(Args...)(sqlite3* db, string sql, auto ref Args args)
+	this(A...)(sqlite3* db, string sql, auto ref A args)
 	in (db)
 	in (sql.length) {
 		lastCode = -1;
@@ -126,7 +126,7 @@ struct Statement {
 	alias close = free;
 
 	/// Bind these args in order to '?' marks in statement
-	void set(Args...)(auto ref Args args) {
+	void set(A...)(auto ref A args) {
 		foreach (a; args)
 			db.checkError("Bind failed: ", bindArg(++argIndex, a));
 	}
@@ -147,6 +147,10 @@ struct Statement {
 		}
 		return -1;
 	}
+
+	auto ref front() => this;
+
+	alias popFront = step;
 
 	/// Get current row (and column) as a basic type
 	T get(T, int COL = 0)() if (!isAggregateType!T) {
@@ -183,6 +187,12 @@ struct Statement {
 		lastCode = sqlite3_step(stmt);
 		db.checkError("Step failed", lastCode);
 		return lastCode == SQLITE_ROW;
+	}
+
+	bool empty() {
+		if (lastCode == -1)
+			step();
+		return lastCode == SQLITE_DONE;
 	}
 
 	/// Reset the statement, to step through the resulting rows again.
@@ -255,9 +265,10 @@ private:
 				"Column is not a blob or string");
 			auto ptr = sqlite3_column_blob(stmt, pos);
 			int size = sqlite3_column_bytes(stmt, pos);
-			static if (isStaticArray!T)
-				return cast(T)ptr[0 .. size];
-			else
+			static if (isStaticArray!T) {
+				enforce!SQLEx(size == T.sizeof, "Column size does not match array size");
+				return cast(T)ptr[0 .. T.sizeof];
+			} else
 				return cast(T)ptr[0 .. size].dup;
 		}
 	}
@@ -299,7 +310,7 @@ unittest {
 	assertThrown!SQLEx(q.get!(byte[]));
 }
 
-alias Query = RefCounted!Statement;
+alias Query = RefCounted!(Statement);
 
 /// A sqlite3 database
 struct SQLite3 {
@@ -328,7 +339,7 @@ struct SQLite3 {
 	}
 
 	/// Execute an sql statement directly, binding the args to it
-	bool exec(Args...)(string sql, auto ref Args args) {
+	bool exec(A...)(string sql, auto ref A args) {
 		auto q = query(sql, args);
 		q.step();
 		return q.lastCode == SQLITE_DONE || q.lastCode == SQLITE_ROW;
@@ -370,7 +381,7 @@ struct SQLite3 {
 	}
 
 	/// Create query from string and args to bind
-	auto query(Args...)(string sql, auto ref Args args)
+	auto query(A...)(string sql, auto ref A args)
 		=> Query(db, sql, args);
 
 	private auto make(State state, string prefix, string suffix, T)(T s)
@@ -412,6 +423,8 @@ struct SQLite3 {
 		assert(db.commit());
 		assert(db.hasTable("MyTable"));
 	}
+
+	auto insertID() => lastRowid(db);
 
 	sqlite3* db;
 	mixin Manager!(db, sqlite3_close_v2);

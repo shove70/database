@@ -45,17 +45,17 @@ struct PgSQLDB {
 
 	ulong replaceInto(T)(T s) => insert!(OR.Replace, T)(s);
 
-	auto selectAllWhere(T, string expr, Args...)(auto ref Args args) if (expr.length)
+	auto selectAllWhere(T, string expr, A...)(auto ref A args) if (expr.length)
 		=> this.query!T(SB.selectAllFrom!T.where(expr), args);
 
-	T selectOneWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
+	T selectOneWhere(T, string expr, A...)(auto ref A args) if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
 		if (q.empty)
 			throw new PgSQLException("No match");
 		return q.get!T;
 	}
 
-	T selectOneWhere(T, string expr, T defValue, Args...)(auto ref Args args)
+	T selectOneWhere(T, string expr, T defValue, A...)(auto ref A args)
 	if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
 		return q ? q.get!T : defValue;
@@ -69,7 +69,7 @@ struct PgSQLDB {
 		return !query(sql).empty;
 	}
 
-	long delWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
+	long delWhere(T, string expr, A...)(auto ref A args) if (expr.length) {
 		enum sql = SB.del!T.where(expr);
 		return exec(sql, args);
 	}
