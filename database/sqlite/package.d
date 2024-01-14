@@ -189,10 +189,10 @@ struct Statement {
 		return lastCode == SQLITE_ROW;
 	}
 
-	bool empty() {
+	@property bool empty() {
 		if (lastCode == -1)
 			step();
-		return lastCode == SQLITE_DONE;
+		return lastCode != SQLITE_ROW;
 	}
 
 	/// Reset the statement, to step through the resulting rows again.

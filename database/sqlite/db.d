@@ -29,14 +29,6 @@ struct QueryResult(T) {
 	Query query;
 	alias query this;
 
-	@property bool empty() {
-		import etc.c.sqlite3;
-
-		if (lastCode < 0)
-			step();
-		return lastCode != SQLITE_ROW;
-	}
-
 	void popFront() {
 		step();
 	}
@@ -45,8 +37,8 @@ struct QueryResult(T) {
 }
 
 unittest {
-	QueryResult!int qi;
-	assert(qi.empty);
+	QueryResult!int q;
+	assert(q.empty);
 }
 
 /// A Database with query building capabilities
@@ -110,6 +102,8 @@ struct SQLite3DB {
 		db.insert!or(row).step();
 		return db.changes;
 	}
+
+	int replaceInto(T)(T s) => insert!(OR.Replace, T)(s);
 
 	int delWhere(T, string expr, A...)(auto ref A args) if (expr.length) {
 		query(SB.del!T.where(expr), args).step();
