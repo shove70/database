@@ -48,13 +48,11 @@ package {
 	alias SQLEx = SQLiteException;
 	alias toz = toStringz;
 
-	void checkError(sqlite3* db, string prefix, int rc,
-		string file = __FILE__, int line = __LINE__)
-	in (db) {
+	void checkError(string prefix)(sqlite3* db, int rc) {
 		if (rc < 0)
 			rc = sqlite3_errcode(db);
 		enforce!SQLEx(rc == SQLITE_OK || rc == SQLITE_ROW || rc == SQLITE_DONE,
-			prefix ~ " (" ~ rc.to!string ~ "): " ~ db.errmsg, file, line);
+			prefix ~ " (" ~ rc.to!string ~ "): " ~ db.errmsg);
 	}
 }
 
@@ -102,7 +100,7 @@ alias RCExSql = RefCounted!(ExpandedSql, RefCountedAutoInitialize.no);
 
 enum EpochDateTime = DateTime(2000, 1, 1, 0, 0, 0);
 
-private enum canConvertToInt(T) = isIntegral!T ||
+private enum canConvertToInt(T) = __traits(isIntegral, T) ||
 	is(T : Date) || is(T : DateTime) || is(T : Duration);
 
 /// Represents a sqlite3 statement
@@ -118,7 +116,7 @@ struct Statement {
 	in (sql.length) {
 		lastCode = -1;
 		int rc = sqlite3_prepare_v2(db, sql.toz, -1, &stmt, null);
-		db.checkError("Prepare failed: ", rc);
+		db.checkError!"Prepare failed: "(rc);
 		this.db = db;
 		set(args);
 	}
@@ -126,9 +124,9 @@ struct Statement {
 	alias close = free;
 
 	/// Bind these args in order to '?' marks in statement
-	void set(A...)(auto ref A args) {
+	pragma(inline, true) void set(A...)(auto ref A args) {
 		foreach (a; args)
-			db.checkError("Bind failed: ", bindArg(++argIndex, a));
+			db.checkError!"Bind failed: "(bindArg(++argIndex, a));
 	}
 
 	int clear()
@@ -153,14 +151,16 @@ struct Statement {
 	alias popFront = step;
 
 	/// Get current row (and column) as a basic type
-	T get(T, int COL = 0)() if (!isAggregateType!T) {
+	T get(T, int COL = 0)() if (!isAggregateType!T)
+	in (stmt) {
 		if (lastCode == -1)
 			step();
 		return getArg!T(COL);
 	}
 
 	/// Map current row to the fields of the given T
-	T get(T, int _ = 0)() if (isAggregateType!T) {
+	T get(T, int _ = 0)() if (isAggregateType!T)
+	in (stmt) {
 		if (lastCode == -1)
 			step();
 		T t;
@@ -184,8 +184,7 @@ struct Statement {
 	/// Step the SQL statement; move to next row of the result set. Return `false` if there are no more rows
 	bool step()
 	in (stmt) {
-		lastCode = sqlite3_step(stmt);
-		db.checkError("Step failed", lastCode);
+		db.checkError!"Step failed"(lastCode = sqlite3_step(stmt));
 		return lastCode == SQLITE_ROW;
 	}
 
@@ -235,9 +234,8 @@ private:
 	int bindArg(int pos, typeof(null))
 		=> sqlite3_bind_null(stmt, pos);
 
-	T getArg(T)(int pos)
-	in (stmt) {
-		int typ = sqlite3_column_type(stmt, pos);
+	T getArg(T)(int pos) {
+		const typ = sqlite3_column_type(stmt, pos);
 		static if (canConvertToInt!T) {
 			enforce!SQLEx(typ == SQLITE_INTEGER, "Column is not an integer");
 			static if (is(T : Date))
