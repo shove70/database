@@ -104,24 +104,40 @@ private enum canConvertToInt(T) = __traits(isIntegral, T) ||
 	is(T : Date) || is(T : DateTime) || is(T : Duration);
 
 /// Represents a sqlite3 statement
-struct Statement {
+alias Statement = Query;
+
+struct Query {
 	int lastCode;
 	int argIndex;
 	sqlite3_stmt* stmt;
-	mixin Manager!(stmt, sqlite3_finalize);
+	alias stmt this;
 
 	/// Construct a query from the string 'sql' into database 'db'
-	this(A...)(sqlite3* db, string sql, auto ref A args)
+	this(A...)(sqlite3* db, in char[] sql, auto ref A args)
 	in (db)
 	in (sql.length) {
 		lastCode = -1;
+		_count = 1;
 		int rc = sqlite3_prepare_v2(db, sql.toz, -1, &stmt, null);
 		db.checkError!"Prepare failed: "(rc);
 		this.db = db;
 		set(args);
 	}
 
-	alias close = free;
+	this(this) {
+		_count++;
+	}
+
+	~this() {
+		if(--_count == 0)
+		close();
+	}
+
+	/// Close the statement
+	void close() {
+		sqlite3_finalize(stmt);
+		stmt = null;
+	}
 
 	/// Bind these args in order to '?' marks in statement
 	pragma(inline, true) void set(A...)(auto ref A args) {
@@ -200,6 +216,7 @@ struct Statement {
 
 private:
 	sqlite3* db;
+	size_t _count;
 
 	int bindArg(int pos, const char[] arg) {
 		static if (size_t.sizeof > 4)
@@ -308,14 +325,12 @@ unittest {
 	assertThrown!SQLEx(q.get!(byte[]));
 }
 
-alias Query = RefCounted!(Statement);
-
 /// A sqlite3 database
 struct SQLite3 {
 
-	/** Create a SQLite3 from a database file. If file does not exist, the
-	  * database will be initialized as new
-	 */
+	/++ Create a SQLite3 from a database file. If file does not exist, the
+	  database will be initialized as new
+	 +/
 	this(string dbFile, int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, int busyTimeout = 500) {
 		int rc = sqlite3_open_v2(dbFile.toz, &db, flags, null);
 		if (!rc)
@@ -347,7 +362,7 @@ struct SQLite3 {
 	unittest {
 		mixin TEST;
 		assert(db.exec("CREATE TABLE Test(name STRING)"));
-		assert(db.exec("INSERT INTO Test VALUES (?)", "hey"));
+		assert(db.exec("INSERT INTO Test VALUES(?)", "hey"));
 	}
 
 	/// Return 'true' if database contains the given table
@@ -367,9 +382,9 @@ struct SQLite3 {
 	unittest {
 		mixin TEST;
 		assert(db.exec("CREATE TABLE MyTable(name STRING)"));
-		assert(db.exec("INSERT INTO MyTable VALUES (?)", "hey"));
+		assert(db.exec("INSERT INTO MyTable VALUES(?)", "hey"));
 		assert(db.lastRowid == 1);
-		assert(db.exec("INSERT INTO MyTable VALUES (?)", "ho"));
+		assert(db.exec("INSERT INTO MyTable VALUES(?)", "ho"));
 		assert(db.lastRowid == 2);
 		// Only insert updates the last rowid
 		assert(db.exec("UPDATE MyTable SET name=? WHERE rowid=?", "woo", 1));
@@ -379,7 +394,7 @@ struct SQLite3 {
 	}
 
 	/// Create query from string and args to bind
-	auto query(A...)(string sql, auto ref A args)
+	auto query(A...)(in char[] sql, auto ref A args)
 		=> Query(db, sql, args);
 
 	private auto make(State state, string prefix, string suffix, T)(T s)
@@ -387,10 +402,10 @@ struct SQLite3 {
 		mixin getSQLFields!(prefix, suffix, T);
 		// Skips "rowid" field
 		static if (I >= 0)
-			return Statement(db, SB(sql!sqlFields, state),
+			return Query(db, SB(sql!sqlFields, state),
 				s.tupleof[0 .. I], s.tupleof[I + 1 .. $]);
 		else
-			return Statement(db, SB(sql!sqlFields, state), s.tupleof);
+			return Query(db, SB(sql!sqlFields, state), s.tupleof);
 	}
 
 	auto insert(OR or = OR.None, T)(T s) if (isAggregateType!T) {
@@ -412,12 +427,12 @@ struct SQLite3 {
 		mixin TEST;
 		assert(db.begin());
 		assert(db.exec("CREATE TABLE MyTable(name TEXT)"));
-		assert(db.exec("INSERT INTO MyTable VALUES (?)", "hey"));
+		assert(db.exec("INSERT INTO MyTable VALUES(?)", "hey"));
 		assert(db.rollback());
 		assert(!db.hasTable("MyTable"));
 		assert(db.begin());
 		assert(db.exec("CREATE TABLE MyTable(name TEXT)"));
-		assert(db.exec("INSERT INTO MyTable VALUES (?)", "hey"));
+		assert(db.exec("INSERT INTO MyTable VALUES(?)", "hey"));
 		assert(db.commit());
 		assert(db.hasTable("MyTable"));
 	}
@@ -425,6 +440,10 @@ struct SQLite3 {
 	auto insertID() => lastRowid(db);
 
 	sqlite3* db;
-	mixin Manager!(db, sqlite3_close_v2);
-	alias close = free;
+	alias db this;
+
+	void close() {
+		sqlite3_close_v2(db);
+		db = null;
+	}
 }
