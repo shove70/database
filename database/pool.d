@@ -9,7 +9,7 @@ final class ConnectionProvider(Connection, alias flags) {
 	private alias ConnectionPool = typeof(this),
 	Flags = typeof(cast()flags);
 
-	static ConnectionPool getInstance(string host, string user, string password, string database,
+	static getInstance(string host, string user, string password, string database,
 		ushort port = flags ? 3306 : 5432, uint maxConnections = 10, uint initialConnections = 3,
 		uint incrementalConnections = 3, Duration waitTime = 5.seconds, Flags caps = flags)
 	in (initialConnections && incrementalConnections) {
@@ -201,12 +201,11 @@ private:
 				if (conn is null || conn.busy)
 					continue;
 
-				if (!testConnection(conn))
-					continue;
-
-				conn.busy = true;
-				result = conn;
-				break;
+				if (testConnection(conn)) {
+					conn.busy = true;
+					result = conn;
+					break;
+				}
 			}
 
 			typeof(_pool) tmp;

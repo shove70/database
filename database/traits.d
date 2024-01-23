@@ -148,6 +148,28 @@ template SQLTypeOf(T) {
 		static assert(0, "Unsupported SQLType '" ~ T.stringof ~ '.');
 }
 
+///
+unittest {
+	static assert(SQLTypeOf!int == "INT");
+	static assert(SQLTypeOf!string == "TEXT");
+	static assert(SQLTypeOf!float == "REAL");
+	static assert(SQLTypeOf!double == "DOUBLE PRECISION");
+	static assert(SQLTypeOf!bool == "BOOLEAN");
+	version (USE_PGSQL) {
+		static assert(SQLTypeOf!Date == "date");
+		static assert(SQLTypeOf!DateTime == "timestamp");
+		static assert(SQLTypeOf!SysTime == "timestamp with time zone");
+		static assert(SQLTypeOf!TimeOfDay == "time");
+		static assert(SQLTypeOf!Duration == "interval");
+		static assert(SQLTypeOf!(ubyte[]) == "bytea");
+	} else {
+		static assert(SQLTypeOf!Date == "INT");
+		static assert(SQLTypeOf!DateTime == "BIGINT");
+		static assert(SQLTypeOf!Duration == "BIGINT");
+		static assert(SQLTypeOf!(ubyte[]) == "BLOB");
+	}
+}
+
 enum isVisible(alias M) = __traits(getVisibility, M).length == 6; //public or export
 
 template isWritableDataMember(alias M) {

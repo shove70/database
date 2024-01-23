@@ -1,15 +1,13 @@
 module database.postgresql.db;
 
-// dfmt off
-import
-	database.postgresql.connection,
-	database.postgresql.packet,
-	database.postgresql.protocol,
-	database.postgresql.row,
-	database.postgresql.type,
-	std.traits;
-// dfmt on
+import database.postgresql.connection,
+database.postgresql.packet,
+database.postgresql.protocol,
+database.postgresql.row,
+database.postgresql.type,
+std.traits;
 public import database.sqlbuilder;
+import std.utf;
 
 @safe:
 
@@ -31,7 +29,7 @@ struct PgSQLDB {
 		static if (Tables.length == 1)
 			exec(SB.create!Tables);
 		else {
-			enum sql = [staticMap!(SB.create, Tables)].join(";");
+			enum sql = [staticMap!(SB.create, Tables)].join(';');
 			runSql(sql);
 		}
 		return true;
@@ -47,17 +45,17 @@ struct PgSQLDB {
 
 	ulong replaceInto(T)(T s) => insert!(OR.Replace, T)(s);
 
-	auto selectAllWhere(T, string expr, Args...)(auto ref Args args) if (expr.length)
+	auto selectAllWhere(T, string expr, A...)(auto ref A args) if (expr.length)
 		=> this.query!T(SB.selectAllFrom!T.where(expr), args);
 
-	T selectOneWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
+	T selectOneWhere(T, string expr, A...)(auto ref A args) if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
 		if (q.empty)
 			throw new PgSQLException("No match");
 		return q.get!T;
 	}
 
-	T selectOneWhere(T, string expr, T defValue, Args...)(auto ref Args args)
+	T selectOneWhere(T, string expr, T defValue, A...)(auto ref A args)
 	if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
 		return q ? q.get!T : defValue;
@@ -71,7 +69,7 @@ struct PgSQLDB {
 		return !query(sql).empty;
 	}
 
-	long delWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
+	long delWhere(T, string expr, A...)(auto ref A args) if (expr.length) {
 		enum sql = SB.del!T.where(expr);
 		return exec(sql, args);
 	}
@@ -118,7 +116,7 @@ struct QueryResult(T = PgSQLRow) {
 		const rowlen = packet.eat!ushort;
 		foreach (i, ref column; row.header)
 			if (i < rowlen)
-				eatValue(packet, column, row[i]);
+				row[i] = eatValue(packet, column);
 			else
 				row[i] = PgSQLValue(null);
 		assert(packet.empty);
@@ -156,119 +154,90 @@ struct QueryResult(T = PgSQLRow) {
 private:
 alias SB = SQLBuilder;
 
-void eatValue(ref InputPacket packet, in PgSQLColumn column, ref PgSQLValue value) {
+PgSQLValue eatValue(ref InputPacket packet, in PgSQLColumn column) {
 	import std.array;
 	import std.conv : to;
 	import std.datetime;
 
 	auto length = packet.eat!uint;
-	if (length == uint.max) {
-		value = PgSQLValue(null);
-		return;
-	}
+	if (length == uint.max)
+		return PgSQLValue(null);
+
 	if (column.format == FormatCode.Binary) {
 		switch (column.type) with (PgType) {
 		case BOOL:
-			value = PgSQLValue(packet.eat!bool);
-			return;
+			return PgSQLValue(packet.eat!bool);
 		case CHAR:
-			value = PgSQLValue(packet.eat!char);
-			return;
+			return PgSQLValue(packet.eat!char);
 		case INT2:
-			value = PgSQLValue(packet.eat!short);
-			return;
+			return PgSQLValue(packet.eat!short);
 		case INT4:
-			value = PgSQLValue(packet.eat!int);
-			return;
+			return PgSQLValue(packet.eat!int);
 		case INT8:
-			value = PgSQLValue(packet.eat!long);
-			return;
+			return PgSQLValue(packet.eat!long);
 		case REAL:
-			value = PgSQLValue(packet.eat!float);
-			return;
+			return PgSQLValue(packet.eat!float);
 		case DOUBLE:
-			value = PgSQLValue(packet.eat!double);
-			return;
-		case VARCHAR, CHARA:
-		case TEXT, NAME:
-			value = PgSQLValue(column.type, packet.eat!(char[])(length).dup);
-			return;
+			return PgSQLValue(packet.eat!double);
+		case VARCHAR, CHARA,
+			TEXT, NAME:
+			return PgSQLValue(column.type, packet.eat!(char[])(length).dup);
 		case BYTEA:
-			value = PgSQLValue(packet.eat!(ubyte[])(length).dup);
-			return;
+			return PgSQLValue(packet.eat!(ubyte[])(length).dup);
 		case DATE:
-			value = PgSQLValue(packet.eat!Date);
-			break;
+			return PgSQLValue(packet.eat!Date);
 		case TIME:
-			value = PgSQLValue(packet.eat!TimeOfDay);
-			break;
+			return PgSQLValue(packet.eat!TimeOfDay);
 		case TIMESTAMP:
-			value = PgSQLValue(packet.eat!DateTime);
-			break;
+			return PgSQLValue(packet.eat!DateTime);
 		case TIMESTAMPTZ:
-			value = PgSQLValue(packet.eat!SysTime);
-			break;
+			return PgSQLValue(packet.eat!SysTime);
 		default:
-			throw new PgSQLErrorException("Unsupported type " ~ column.type.columnTypeName);
 		}
-		return;
+		throw new PgSQLErrorException("Unsupported type " ~ column.type.columnTypeName);
 	}
 	auto svalue = packet.eat!(const(char)[])(length);
 	switch (column.type) with (PgType) {
 	case UNKNOWN, NULL:
-		value = PgSQLValue(null);
-		break;
+		return PgSQLValue(null);
 	case BOOL:
-		value = PgSQLValue(svalue[0] == 't');
-		break;
+		return PgSQLValue(svalue[0] == 't');
 	case CHAR:
-		value = PgSQLValue(svalue[0]);
-		break;
+		return PgSQLValue(svalue[0]);
 	case INT2:
-		value = PgSQLValue(svalue.to!short);
-		break;
+		return PgSQLValue(svalue.to!short);
 	case INT4:
-		value = PgSQLValue(svalue.to!int);
-		break;
+		return PgSQLValue(svalue.to!int);
 	case INT8:
-		value = PgSQLValue(svalue.to!long);
-		break;
+		return PgSQLValue(svalue.to!long);
 	case REAL:
-		value = PgSQLValue(svalue.to!float);
-		break;
+		return PgSQLValue(svalue.to!float);
 	case DOUBLE:
-		value = PgSQLValue(svalue.to!double);
-		break;
+		return PgSQLValue(svalue.to!double);
 
-	case NUMERIC:
-	case MONEY:
-	case BIT, VARBIT:
-	case INET, CIDR, MACADDR, MACADDR8:
-	case UUID, JSON, XML:
-	case TEXT, NAME:
-	case VARCHAR, CHARA:
-		value = PgSQLValue(column.type, svalue.dup);
-		break;
+	case NUMERIC, MONEY,
+		BIT, VARBIT,
+		INET, CIDR, MACADDR, MACADDR8,
+		UUID, JSON, XML,
+		TEXT, NAME,
+		VARCHAR, CHARA:
+		return PgSQLValue(column.type, svalue.dup);
 	case BYTEA:
 		if (svalue.length >= 2)
 			svalue = svalue[2 .. $];
 		auto data = uninitializedArray!(ubyte[])(svalue.length >> 1);
 		foreach (i; 0 .. data.length)
 			data[i] = cast(ubyte)(hexDecode(svalue[i << 1]) << 4 | hexDecode(svalue[i << 1 | 1]));
-		value = PgSQLValue(data);
-		break;
+		return PgSQLValue(data);
 	case DATE:
-		value = PgSQLValue(parseDate(svalue));
-		break;
+		return PgSQLValue(parseDate(svalue));
 	case TIME, TIMETZ:
-		value = PgSQLValue(parsePgSQLTime(svalue));
-		break;
+		return PgSQLValue(parsePgSQLTime(svalue));
 	case TIMESTAMP, TIMESTAMPTZ:
-		value = PgSQLValue(parsePgSQLTimestamp(svalue));
-		break;
+		return PgSQLValue(parsePgSQLTimestamp(svalue));
 	default:
-		throw new PgSQLErrorException("Unsupported type " ~ column.type.columnTypeName);
 	}
+	throw new PgSQLErrorException("Unsupported type " ~ column.type.columnTypeName);
 }
 
 uint hexDecode(char c) @nogc pure nothrow
@@ -281,7 +250,7 @@ public unittest {
 	@snakeCase struct PlaceOwner {
 	@snakeCase:
 		@sqlkey() uint placeID; // matches place_id
-		uint locationId; // matches location_id
+		float locationId; // matches location_id
 		string ownerName; // matches owner_name
 		string feedURL; // matches feed_url
 	}
@@ -300,13 +269,17 @@ public unittest {
 	db.create!PlaceOwner;
 	db.insert(PlaceOwner(1, 1, "foo", ""));
 	db.insert(PlaceOwner(2, 1, "bar", ""));
-	db.insert(PlaceOwner(3, 3, "baz", ""));
+	db.insert(PlaceOwner(3, 7.5, "baz", ""));
 	auto s = db.selectOneWhere!(PlaceOwner, "owner_name=$1")("bar");
 	assert(s.placeID == 2);
 	assert(s.ownerName == "bar");
-	foreach (row; db.selectAllWhere!(PlaceOwner, "location_id=$1")(1))
+	uint count;
+	foreach (row; db.selectAllWhere!(PlaceOwner, "location_id=$1")(1)) {
 		writeln(row);
-	db.exec("drop table place_owner");
+		count++;
+	}
 	db.exec("drop table company");
+	db.exec("drop table place_owner");
+	assert(count == 2);
 	db.close();
 }

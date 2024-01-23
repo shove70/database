@@ -78,12 +78,12 @@ struct SQLBuilder {
 
 	static SB insert(OR or = OR.None, T)() if (isAggregateType!T)
 		=> SB(make!(or ~ "INTO " ~ quote(SQLName!T) ~ '(',
-				") VALUES(" ~ placeholders(ColumnCount!T) ~ ')', T), State.insert);
+				")VALUES(" ~ placeholders(ColumnCount!T) ~ ')', T), State.insert);
 
 	///
 	unittest {
-		assert(SQLBuilder.insert!User == `INSERT INTO "User"("name","age") VALUES($1,$2)`);
-		assert(SQLBuilder.insert!Message == `INSERT INTO "msg"("contents") VALUES($1)`);
+		assert(SQLBuilder.insert!User == `INSERT INTO "User"("name","age")VALUES($1,$2)`);
+		assert(SQLBuilder.insert!Message == `INSERT INTO "msg"("contents")VALUES($1)`);
 	}
 
 	///

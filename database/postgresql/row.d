@@ -29,7 +29,6 @@ private template Mixin() {
 	void structurize(Strict strict = Strict.yesIgnoreNull, string path = null, T)(ref T result) {
 		import database.postgresql.exception;
 		import database.postgresql.type;
-		import std.format : format;
 
 		foreach (i, ref member; result.tupleof) {
 			static if (isWritableDataMember!member) {
@@ -39,8 +38,8 @@ private template Mixin() {
 				static if (isValueType!(typeof(member))) {
 					enum hash = colName.hashOf;
 
-					if (auto index = find(hash, colName)) {
-						auto pvalue = values[index - 1];
+					if (const index = find(hash, colName)) {
+						const pvalue = values[index - 1];
 
 						static if (strict != Strict.yes || opt) {
 							if (pvalue.isNull)
@@ -53,7 +52,7 @@ private template Mixin() {
 
 					static if (!opt)
 						throw new PgSQLErrorException(
-							"Column '%s' was not found in this result set".format(colName));
+							"Column '" ~ colName ~ "' was not found in this result set");
 				} else
 					structurize!(opt ? Strict.no : strict, colName ~ '.')(member);
 			}

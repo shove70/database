@@ -1,13 +1,11 @@
 module database.postgresql.connection;
 
-// dfmt off
 import database.postgresql.db,
-	database.postgresql.packet,
-	database.postgresql.protocol,
-	database.postgresql.row,
-	database.postgresql.type,
-	database.util;
-// dfmt on
+database.postgresql.packet,
+database.postgresql.protocol,
+database.postgresql.row,
+database.postgresql.type,
+database.util;
 
 alias Socket = DBSocket!PgSQLConnectionException;
 
@@ -18,6 +16,7 @@ struct Status {
 	ulong affected, insertID;
 }
 
+// dfmt off
 struct Settings {
 	string
 		host,
@@ -37,16 +36,17 @@ private struct ServerInfo {
 	uint processId,
 	cancellationKey;
 }
+// dfmt on
 
 @safe:
 class Connection {
 	import std.datetime,
-	std.format,
 	std.functional,
 	std.logger,
 	std.range,
 	std.string,
-	std.traits;
+	std.traits,
+	std.conv : text;
 
 	Socket socket;
 
@@ -62,7 +62,19 @@ class Connection {
 	void ping() {
 	}
 
-	@property {
+	alias OnDisconnectCallback = void delegate();
+
+	@property final {
+		bool inTransaction() const => connected && status_.transaction == TransactionStatus.Inside;
+
+		ulong insertID() const nothrow @nogc => status_.insertID;
+
+		ulong affected() const nothrow @nogc => status_.affected;
+
+		bool ready() const nothrow @nogc => status_.ready;
+
+		bool connected() const => socket && socket.isAlive;
+
 		auto settings() const => settings_;
 
 		auto notices() const => notices_;
@@ -70,13 +82,13 @@ class Connection {
 		auto notifications() const => notifications_;
 	}
 
-	auto runSql(T = PgSQLRow)(in char[] sql) {
+	auto runSql(T = PgSQLRow)(in char[] sql) @trusted {
 		ensureConnected();
 
-		out_.length = 1 + 4 + sql.length + 1;
-		auto cmd = OutputPacket(OutputMessageType.Query, out_);
-		cmd.put(sql);
-		socket.write(cmd.data);
+		auto len = 5 + sql.length + 1;
+		mixin Output!(len, OMT.Query);
+		op.put(sql);
+		socket.write(op.data);
 		return QueryResult!T(this);
 	}
 
@@ -84,7 +96,7 @@ class Connection {
 		prepare!Args("", sql);
 		bind("", "", forward!args);
 		flush();
-		eatStatuses(InputMessageType.BindComplete, true);
+		eatStatuses(IMT.BindComplete, true);
 		describe();
 		sendExecute();
 		return QueryResult!T(this, FormatCode.Binary);
@@ -94,79 +106,90 @@ class Connection {
 		prepare!Args("", sql);
 		bind("", "", forward!args);
 		flush();
-		eatStatuses(InputMessageType.BindComplete, true);
+		eatStatuses(IMT.BindComplete, true);
 		sendExecute();
 		eatStatuses();
 		return affected;
 	}
 
-	void prepare(Args...)(in char[] statement, in char[] sql)
+	void prepare(Args...)(in char[] statement, in char[] sql)@trusted
 	if (Args.length <= short.max) {
+		if (statement.length > 255)
+			throw new PgSQLException("statement name is too long");
 		ensureConnected();
 
-		out_.length = 4 +
+		auto len = 5 +
 			statement.length + 1 +
 			sql.length + 1 +
 			2 +
-			Args.length * 4 + 1;
-		auto cmd = OutputPacket(OutputMessageType.Parse, out_);
-		cmd.put(statement);
-		cmd.put(sql);
-		cmd.put(cast(short)Args.length);
+			Args.length * 4;
+		mixin Output!(len, OMT.Parse);
+		op.put(statement);
+		op.put(sql);
+		op.put!short(Args.length);
 		foreach (T; Args)
-			cmd.put(PgTypeof!T);
-		socket.write(cmd.data);
+			op.put(PgTypeof!T);
+		socket.write(op.data);
 	}
 
 	void bind(Args...)(in char[] portal, in char[] statement, auto ref Args args) @trusted
 	if (Args.length <= short.max) {
-		out_.length = 4 +
+		auto len = 5 +
 			portal.length + 1 +
 			statement.length + 1 +
-			2 + 2 * Args.length +
-			2 + 4 * Args.length +
-			2 + 2;
-		auto cmd = OutputPacket(OutputMessageType.Bind, out_);
-		cmd.put(portal);
-		cmd.put(statement);
-		cmd.put!short(1);
-		cmd.put(FormatCode.Binary);
-		cmd.put(cast(short)Args.length);
-		foreach (i, ref arg; args) {
-			enum U = PgTypeof!(Args[i]);
-			static assert(U != PgType.UNKNOWN, "Unrecognized type " ~ Args[i].stringof);
-			static if (is(U == PgType.NULL))
-				cmd.put(-1);
-			else static if (isArray!(Args[i])) {
-				if (arg.length >= int.max)
-					throw new PgSQLException("array is too long to serialize");
-				cmd.put(cast(int)arg.length);
-				cmd.put(cast(ubyte[])arg);
+			2 + 4 +
+			4 * Args.length +
+			4;
+		foreach (i, arg; args) {
+			enum PT = PgTypeof!(Args[i]);
+			static assert(PT != PgType.UNKNOWN, "Unrecognized type " ~ Args[i].stringof);
+			static if (isArray!(Args[i])) {
+				len += arg.length;
 			} else {
-				cmd.put(cast(int)arg.sizeof);
-				cmd.put(arg);
+				len += PT == PgType.TIMESTAMPTZ ? 4 : arg.sizeof;
 			}
 		}
-		cmd.put!short(1);
-		cmd.put(FormatCode.Binary);
-		socket.write(cmd.data);
+		if (len >= int.max)
+			throw new PgSQLException("bind message is too long");
+		mixin Output!(len, OMT.Bind);
+		op.put(portal);
+		op.put(statement);
+		op.put!short(1);
+		op.put(FormatCode.Binary);
+		op.put!short(Args.length);
+		foreach (i, arg; args) {
+			enum PT = PgTypeof!(Args[i]);
+			static if (PT == PgType.NULL)
+				op.put(-1);
+			else static if (isArray!(Args[i])) {
+				op.put(cast(int)arg.length);
+				op.put(cast(ubyte[])arg);
+			} else {
+				enum int size = PT == PgType.TIMESTAMPTZ ? 4 : arg.sizeof;
+				op.put(size);
+				op.put(arg);
+			}
+		}
+		op.put!short(1);
+		op.put(FormatCode.Binary);
+		socket.write(op.data);
 	}
 
-	void describe(in char[] name = "", DescribeType type = DescribeType.Statement) {
-		out_.length = 1 + 4 + 1 + name.length + 1;
-		auto cmd = OutputPacket(OutputMessageType.Describe, out_);
-		cmd.put(type);
-		cmd.put(name);
-		socket.write(cmd.data);
+	void describe(in char[] name = "", DescribeType type = DescribeType.Statement) @trusted {
+		auto len = 5 + 1 + name.length + 1;
+		mixin Output!(len, OMT.Describe);
+		op.put(type);
+		op.put(name);
+		socket.write(op.data);
 	}
 
 	void flush() {
-		enum ubyte[5] buf = [OutputMessageType.Flush, 0, 0, 0, 4];
+		enum ubyte[5] buf = [OMT.Flush, 0, 0, 0, 4];
 		socket.write(buf);
 	}
 
 	void sync() {
-		enum ubyte[5] buf = [OutputMessageType.Sync, 0, 0, 0, 4];
+		enum ubyte[5] buf = [OMT.Sync, 0, 0, 0, 4];
 		socket.write(buf);
 	}
 
@@ -183,14 +206,14 @@ class Connection {
 		socket.write(buf);
 	}
 
-	void close(DescribeType type, in char[] name = "") {
-		out_.length = 1 + 4 + 1 + name.length + 1;
-		auto cmd = OutputPacket(OutputMessageType.Close, out_);
-		cmd.put(type);
-		cmd.put(name);
-		socket.write(cmd.data);
+	void close(DescribeType type, in char[] name = "") @trusted {
+		auto len = 5 + 1 + name.length + 1;
+		mixin Output!(len, OMT.Close);
+		op.put(type);
+		op.put(name);
+		socket.write(op.data);
 		flush();
-		eatStatuses(InputMessageType.CloseComplete);
+		eatStatuses(IMT.CloseComplete);
 	}
 
 	bool begin() {
@@ -219,26 +242,12 @@ class Connection {
 		return !inTransaction;
 	}
 
-	alias OnDisconnectCallback = void delegate();
-
-	@property {
-		bool inTransaction() const => connected && status_.transaction == TransactionStatus.Inside;
-
-		ulong insertID() const nothrow @nogc => status_.insertID;
-
-		ulong affected() const nothrow @nogc => status_.affected;
-
-		bool ready() const nothrow @nogc => status_.ready;
-
-		bool connected() const => socket && socket.isAlive;
-	}
-
 	void close(bool sendTerminate = true) nothrow {
 		scope (exit) {
 			socket.close();
 			socket = null;
 		}
-		enum ubyte[5] terminateMsg = [OutputMessageType.Terminate, 0, 0, 0, 4];
+		enum ubyte[5] terminateMsg = [OMT.Terminate, 0, 0, 0, 4];
 		if (sendTerminate)
 			try
 				socket.write(terminateMsg);
@@ -266,35 +275,36 @@ private:
 			onDisconnect();
 	}
 
-	void connect() {
+	void connect() @trusted {
 		socket = new Socket(settings_.host, settings_.port);
 
-		out_.length = 4 + 4 +
+		auto len = 5 + 4 +
 			"user".length + 1 + settings_.user.length + 1 +
-			(settings_.db != "" ? "database".length + 1 + settings_.db.length + 1 : 0) + 1;
-		auto startup = OutputPacket(out_);
+			(settings_.db.length ? "database".length + 1 + settings_.db.length + 1 : 0);
+		mixin Output!len;
+		alias startup = op;
 		startup.put(0x00030000u);
 		startup.put("user");
 		startup.put(settings_.user);
-		if (settings_.db != "") {
+		if (settings_.db.length) {
 			startup.put("database");
 			startup.put(settings_.db);
 		}
 		startup.put!ubyte(0);
 		socket.write(startup.data);
 
-		if (eatAuth(retrieve()))
-			eatAuth(retrieve());
-		eatBackendKeyData(eatStatuses(InputMessageType.BackendKeyData));
+		if (eatAuth())
+			eatAuth();
+		eatBackendKeyData(eatStatuses(IMT.BackendKeyData));
 		eatStatuses();
 	}
 
-	void sendExecute(string portal = "", int rowLimit = 0) {
-		out_.length = 1 + 4 + portal.length + 1 + 4;
-		auto cmd = OutputPacket(OutputMessageType.Execute, out_);
-		cmd.put(portal);
-		cmd.put(rowLimit);
-		socket.write(cmd.data);
+	void sendExecute(string portal = "", int rowLimit = 0) @trusted {
+		auto len = 5 + portal.length + 1 + 4;
+		mixin Output!(len, OMT.Execute);
+		op.put(portal);
+		op.put(rowLimit);
+		socket.write(op.data);
 		sync();
 	}
 
@@ -311,13 +321,13 @@ private:
 		socket.read(header);
 
 		auto len = native(header[0]) - 4;
-		in_.length = len;
-		socket.read(in_);
+		buf.length = len;
+		socket.read(buf);
 
-		if (in_.length != len)
+		if (buf.length != len)
 			throw new PgSQLConnectionException("Wrong number of bytes read");
 
-		return InputPacket(control, in_);
+		return InputPacket(control, buf);
 	}
 
 	package InputPacket retrieve() @trusted {
@@ -328,52 +338,54 @@ private:
 		socket.read(header);
 
 		uint len = native(*cast(uint*)&header[1]) - 4;
-		in_.length = len;
-		socket.read(in_);
+		buf.length = len;
+		socket.read(buf);
 
-		if (in_.length != len)
+		if (buf.length != len)
 			throw new PgSQLConnectionException("Wrong number of bytes read");
 
-		return InputPacket(header[0], in_);
+		return InputPacket(header[0], buf);
 	}
 
-	package void eatStatuses() {
-		while (eatStatus(retrieve()) != InputMessageType.ReadyForQuery) {
-		}
+	package void eatStatuses() @trusted {
+		InputPacket packet = void;
+		do
+			packet = retrieve();
+		while (eatStatus(packet) != IMT.ReadyForQuery);
 	}
 
-	package auto eatStatuses(InputMessageType type, bool syncOnError = false) @trusted {
+	package auto eatStatuses(IMT type, bool syncOnError = false) @trusted {
 		InputPacket packet = void;
 		do {
 			packet = retrieve();
 			if (packet.type == type)
 				break;
 		}
-		while (eatStatus(packet, syncOnError) != InputMessageType.ReadyForQuery);
+		while (eatStatus(packet, syncOnError) != IMT.ReadyForQuery);
 		return packet;
 	}
 
-	bool eatAuth(InputPacket packet) {
+	bool eatAuth() @trusted {
 		import std.algorithm : max;
 
 		scope (failure)
 			disconnect();
 
-		auto type = cast(InputMessageType)packet.type;
-		switch (type) with (InputMessageType) {
+		auto packet = retrieve();
+		auto type = cast(IMT)packet.type;
+		switch (type) with (IMT) {
 		case Authentication:
 			auto auth = packet.eat!uint;
 			version (NoMD5Auth)
-				out_.length = 1 + 4 + settings_.pwd.length + 1;
+				auto len = 5 + settings_.pwd.length + 1;
 			else
-				out_.length = 1 + 4 + max(settings_.pwd.length, 3 + 32) + 1; // 3 for md5 and 32 is hash size
-			auto reply = OutputPacket(OutputMessageType.PasswordMessage, out_);
-
+				auto len = 5 + max(settings_.pwd.length, 3 + 32) + 1; // 3 for md5 and 32 is hash size
+			mixin Output!(len, OMT.PasswordMessage);
 			switch (auth) {
 			case 0:
 				return false;
 			case 3:
-				reply.put(settings_.pwd);
+				op.put(settings_.pwd);
 				break;
 				version (NoMD5Auth) {
 				} else {
@@ -386,8 +398,8 @@ private:
 					}
 
 					auto salt = packet.eat!(ubyte[])(4);
-					reply.put("md5".representation);
-					reply.put(MD5toHex(MD5toHex(settings_.pwd, settings_.user), salt));
+					op.put("md5".representation);
+					op.put(MD5toHex(MD5toHex(settings_.pwd, settings_.user), salt));
 					break;
 				}
 				/+case 6: // SCM
@@ -398,11 +410,10 @@ private:
 			case 11:
 			case 12:+/
 			default:
-				throw new PgSQLProtocolException(
-					"Unsupported authentication method: %s".format(auth));
+				throw new PgSQLProtocolException(text("Unsupported authentication method: ", auth));
 			}
 
-			socket.write(reply.data);
+			socket.write(op.data);
 			break;
 		case NoticeResponse:
 			eatNoticeResponse(packet);
@@ -411,14 +422,14 @@ private:
 			eatNoticeResponse(packet);
 			throwErr();
 		default:
-			throw new PgSQLProtocolException("Unexpected message: %s".format(type));
+			throw new PgSQLProtocolException(text("Unexpected message: ", type));
 		}
 
 		return true;
 	}
 
 	void eatParameterStatus(ref InputPacket packet)
-	in (packet.type == InputMessageType.ParameterStatus)
+	in (packet.type == IMT.ParameterStatus)
 	out (; packet.empty) {
 		auto name = packet.eatz();
 		auto value = packet.eatz();
@@ -435,13 +446,13 @@ private:
 	}
 
 	void eatBackendKeyData(InputPacket packet)
-	in (packet.type == InputMessageType.BackendKeyData) {
+	in (packet.type == IMT.BackendKeyData) {
 		server.processId = packet.eat!uint;
 		server.cancellationKey = packet.eat!uint;
 	}
 
 	void eatNoticeResponse(ref InputPacket packet)
-	in (packet.type == InputMessageType.NoticeResponse || packet.type == InputMessageType
+	in (packet.type == IMT.NoticeResponse || packet.type == IMT
 		.ErrorResponse) {
 		Notice notice;
 		auto field = packet.eat!ubyte;
@@ -488,12 +499,12 @@ private:
 	}
 
 	void eatNotification(ref InputPacket packet)
-	in (packet.type == InputMessageType.NotificationResponse) {
+	in (packet.type == IMT.NotificationResponse) {
 		notifications_ ~= Notification(packet.eat!int, packet.eatz(), packet.eatz());
 	}
 
 	void eatCommandComplete(ref InputPacket packet)
-	in (packet.type == InputMessageType.CommandComplete) {
+	in (packet.type == IMT.CommandComplete) {
 		import std.algorithm : swap;
 
 		auto tag = packet.eatz();
@@ -522,9 +533,9 @@ private:
 		}
 	}
 
-	auto eatStatus(InputPacket packet, bool syncOnError = false) {
-		auto type = cast(InputMessageType)packet.type;
-		switch (type) with (InputMessageType) {
+	auto eatStatus(ref InputPacket packet, bool syncOnError = false) {
+		IMT type = cast(IMT)packet.type;
+		switch (type) with (IMT) {
 		case ParameterStatus:
 			eatParameterStatus(packet);
 			break;
@@ -547,10 +558,11 @@ private:
 		case CommandComplete:
 			eatCommandComplete(packet);
 			break;
-		case EmptyQueryResponse, NoData, ParameterDescription, ParseComplete, BindComplete, PortalSuspended:
+		case EmptyQueryResponse, NoData, ParameterDescription,
+			ParseComplete, BindComplete, PortalSuspended:
 			break;
 		default:
-			throw new PgSQLProtocolException("Unexpected message: %s".format(type));
+			throw new PgSQLProtocolException(text("Unexpected message: ", type));
 		}
 		return type;
 	}
@@ -565,7 +577,7 @@ private:
 		throw new PgSQLErrorException(notices_.front.message);
 	}
 
-	ubyte[] in_, out_;
+	ubyte[] buf;
 
 	OnDisconnectCallback onDisconnect;
 	Status status_;

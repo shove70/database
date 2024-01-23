@@ -11,7 +11,7 @@ struct Row(Value, Header, E:
 	Exception, alias hashOf, alias Mixin) {
 	import std.algorithm;
 	import std.traits;
-	import std.format : format;
+	import std.conv : text;
 
 	ref auto opDispatch(string key)() const => this[key];
 
@@ -82,8 +82,7 @@ struct Row(Value, Header, E:
 		static if (isTuple!T) {
 			static if (strict != Strict.no)
 				if (x.length >= values.length)
-					throw new PgSQLErrorException(
-						"Column %s is out of range for this result set".format(x.length));
+					throw new E(text("Column ", x.length, " is out of range for this result set"));
 			foreach (i, ref f; x.tupleof) {
 				static if (strict != Strict.yes) {
 					if (!this[i].isNull)

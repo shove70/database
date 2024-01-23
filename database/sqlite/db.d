@@ -29,14 +29,6 @@ struct QueryResult(T) {
 	Query query;
 	alias query this;
 
-	@property bool empty() {
-		import etc.c.sqlite3;
-
-		if (lastCode < 0)
-			step();
-		return lastCode != SQLITE_ROW;
-	}
-
 	void popFront() {
 		step();
 	}
@@ -45,8 +37,8 @@ struct QueryResult(T) {
 }
 
 unittest {
-	QueryResult!int qi;
-	assert(qi.empty);
+	QueryResult!int q;
+	assert(q.empty);
 }
 
 /// A Database with query building capabilities
@@ -65,17 +57,17 @@ struct SQLite3DB {
 		return q.lastCode == SQLITE_DONE;
 	}
 
-	auto selectAllWhere(T, string expr, Args...)(auto ref Args args) if (expr.length)
+	auto selectAllWhere(T, string expr, A...)(auto ref A args) if (expr.length)
 		=> QueryResult!T(query(SB.selectAllFrom!T.where(expr), args));
 
-	T selectOneWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
+	T selectOneWhere(T, string expr, A...)(auto ref A args) if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
 		if (q.step())
 			return q.get!T;
 		throw new SQLEx("No match");
 	}
 
-	T selectOneWhere(T, string expr, T defValue, Args...)(auto ref Args args)
+	T selectOneWhere(T, string expr, T defValue, A...)(auto ref A args)
 	if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
 		return q.step() ? q.get!T : defValue;
@@ -111,7 +103,9 @@ struct SQLite3DB {
 		return db.changes;
 	}
 
-	int delWhere(T, string expr, Args...)(auto ref Args args) if (expr.length) {
+	int replaceInto(T)(T s) => insert!(OR.Replace, T)(s);
+
+	int delWhere(T, string expr, A...)(auto ref A args) if (expr.length) {
 		query(SB.del!T.where(expr), args).step();
 		return db.changes;
 	}
