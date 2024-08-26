@@ -2,18 +2,15 @@ module database.sqlite;
 
 import std.conv : to;
 
-// dfmt off
-import
-	std.datetime,
-	std.exception,
-	std.meta,
-	std.string,
-	std.traits,
-	std.typecons,
-	etc.c.sqlite3,
-	database.sqlbuilder,
-	database.util;
-// dfmt on
+import database.sqlbuilder,
+database.sqlite.query,
+database.util,
+etc.c.sqlite3,
+std.meta,
+std.string,
+std.traits,
+std.typecons;
+public import database.sqlite.query;
 
 version (Windows) {
 	// manually link in dub.sdl
@@ -35,27 +32,13 @@ class SQLiteException : DBException {
 
 /// Setup code for tests
 version (unittest) package template TEST(string dbname = "", T = SQLite3) {
-	T db = () {
+	T db = {
 		static if (dbname.length) {
 			tryRemove(dbname ~ ".db");
 			return T(dbname ~ ".db");
 		} else
 			return T(":memory:");
 	}();
-}
-
-package {
-	alias SQLEx = SQLiteException;
-
-	void checkError(sqlite3* db, string prefix, int rc,
-		string file = __FILE__, int line = __LINE__)
-	in (db) {
-		if (rc < 0)
-			rc = sqlite3_errcode(db);
-		enforce!SQLEx(
-			rc == SQLITE_OK || rc == SQLITE_ROW || rc == SQLITE_DONE, prefix ~
-				" (" ~ rc.to!string ~ "): " ~ db.errmsg, file, line);
-	}
 }
 
 private template Manager(alias ptr, alias freeptr) {
@@ -100,217 +83,14 @@ alias RCExSql = RefCounted!(ExpandedSql, RefCountedAutoInitialize.no);
 	in (stmt) => RCExSql(ExpandedSql(sqlite3_expanded_sql(stmt)));
 }
 
-enum EpochDateTime = DateTime(2000, 1, 1, 0, 0, 0);
-
-private enum canConvertToInt(T) = isIntegral!T ||
-	is(Unqual!T == Date) || is(Unqual!T == DateTime) || is(Unqual!T == Duration);
-
-/// Represents a sqlite3 statement
-struct Statement {
-	int lastCode;
-	int argIndex;
-	sqlite3_stmt* stmt;
-	mixin Manager!(stmt, sqlite3_finalize);
-
-	/// Construct a query from the string 'sql' into database 'db'
-	this(Args...)(sqlite3* db, string sql, auto ref Args args)
-	in (db)
-	in (sql.length) {
-		lastCode = -1;
-		int rc = sqlite3_prepare_v2(db, sql.toz, -1, &stmt, null);
-		db.checkError("Prepare failed: ", rc);
-		this.db = db;
-		set(args);
-	}
-
-	alias close = free;
-
-private:
-	sqlite3* db;
-
-	int bindArg(S)(int pos, S arg) if (isSomeString!S) {
-		static if (size_t.sizeof > 4)
-			return sqlite3_bind_text64(stmt, pos, arg.ptr, arg.length, null, SQLITE_UTF8);
-		else
-			return sqlite3_bind_text(stmt, pos, arg.ptr, cast(int)arg.length, null);
-	}
-
-	int bindArg(int pos, double arg)
-		=> sqlite3_bind_double(stmt, pos, arg);
-
-	int bindArg(T)(int pos, T x) if (canConvertToInt!T) {
-		static if (is(Unqual!T == Date))
-			return sqlite3_bind_int(stmt, pos, x.dayOfGregorianCal);
-		else static if (is(Unqual!T == DateTime))
-			return sqlite3_bind_int64(stmt, pos, (x - EpochDateTime).total!"usecs");
-		else static if (is(Unqual!T == Duration))
-			return sqlite3_bind_int64(stmt, pos, x.total!"usecs");
-		else static if (T.sizeof > 4)
-			return sqlite3_bind_int64(stmt, pos, x);
-		else
-			return sqlite3_bind_int(stmt, pos, x);
-	}
-
-	int bindArg(int pos, void[] arg) {
-		static if (size_t.sizeof > 4)
-			return sqlite3_bind_blob64(stmt, pos, arg.ptr, arg.length, null);
-		else
-			return sqlite3_bind_blob(stmt, pos, arg.ptr, cast(int)arg.length, null);
-	}
-
-	int bindArg(T)(int pos, T) if (is(Unqual!T : typeof(null)))
-		=> sqlite3_bind_null(stmt, pos);
-
-	T getArg(T)(int pos)
-	in (stmt) {
-		int typ = sqlite3_column_type(stmt, pos);
-		static if (canConvertToInt!T) {
-			enforce!SQLEx(typ == SQLITE_INTEGER, "Column is not an integer");
-			static if (is(Unqual!T == Date))
-				return Date(sqlite3_column_int(stmt, pos));
-			else static if (is(Unqual!T == DateTime))
-				return EpochDateTime + dur!"usecs"(sqlite3_column_int64(stmt, pos));
-			else static if (is(Unqual!T == Duration))
-				return dur!"usecs"(sqlite3_column_int64(stmt, pos));
-			else static if (T.sizeof > 4)
-				return sqlite3_column_int64(stmt, pos);
-			else
-				return cast(T)sqlite3_column_int(stmt, pos);
-		} else static if (isSomeString!T) {
-			if (typ == SQLITE_NULL)
-				return T.init;
-			int size = sqlite3_column_bytes(stmt, pos);
-			return cast(T)sqlite3_column_text(stmt, pos)[0 .. size].dup;
-		} else static if (isFloatingPoint!T) {
-			enforce!SQLEx(typ != SQLITE_BLOB, "Column cannot convert to a real");
-			return sqlite3_column_double(stmt, pos);
-		} else {
-			if (typ == SQLITE_NULL)
-				return T.init;
-			enforce!SQLEx(typ == SQLITE3_TEXT || typ == SQLITE_BLOB,
-				"Column is not a blob or string");
-			auto ptr = sqlite3_column_blob(stmt, pos);
-			int size = sqlite3_column_bytes(stmt, pos);
-			static if (isStaticArray!T)
-				return cast(T)ptr[0 .. size];
-			else
-				return cast(T)ptr[0 .. size].dup;
-		}
-	}
-
-public:
-	/// Bind these args in order to '?' marks in statement
-	void set(Args...)(auto ref Args args) {
-		static foreach (a; args)
-			db.checkError("Bind failed: ", bindArg(++argIndex, a));
-	}
-
-	int clear()
-	in (stmt) => sqlite3_clear_bindings(stmt);
-
-	// Find column by name
-	int findColumn(string name)
-	in (stmt) {
-		import core.stdc.string : strcmp;
-
-		auto ptr = name.toz;
-		int count = sqlite3_column_count(stmt);
-		for (int i = 0; i < count; i++) {
-			if (strcmp(sqlite3_column_name(stmt, i), ptr) == 0)
-				return i;
-		}
-		return -1;
-	}
-
-	/// Get current row (and column) as a basic type
-	T get(T, int COL = 0)() if (!isAggregateType!T) {
-		if (lastCode == -1)
-			step();
-		return getArg!T(COL);
-	}
-
-	/// Map current row to the fields of the given T
-	T get(T, int _ = 0)() if (isAggregateType!T) {
-		if (lastCode == -1)
-			step();
-		T t;
-		int i = void;
-		static foreach (N; FieldNameTuple!T) {
-			i = findColumn(ColumnName!(T, N));
-			if (i >= 0)
-				__traits(getMember, t, N) = getArg!(typeof(__traits(getMember, t, N)))(i);
-		}
-		return t;
-	}
-
-	/// Get current row as a tuple
-	Tuple!T get(T...)() {
-		Tuple!T t;
-		foreach (I, Ti; T)
-			t[I] = get!(Ti, I)();
-		return t;
-	}
-
-	/// Step the SQL statement; move to next row of the result set. Return `false` if there are no more rows
-	bool step()
-	in (stmt) {
-		lastCode = sqlite3_step(stmt);
-		db.checkError("Step failed", lastCode);
-		return lastCode == SQLITE_ROW;
-	}
-
-	/// Reset the statement, to step through the resulting rows again.
-	int reset()
-	in (stmt) => sqlite3_reset(stmt);
-}
-
-///
-unittest {
-	mixin TEST;
-
-	auto q = db.query("create table TEST(a INT, b INT)");
-	assert(!q.step());
-
-	q = db.query("insert into TEST values(?, ?)");
-	q.set(1, 2);
-	assert(!q.step());
-	q = db.query("select b from TEST where a == ?", 1);
-	assert(q.step());
-	assert(q.get!int == 2);
-	assert(!q.step());
-
-	q = db.query("select a,b from TEST where b == ?", 2);
-	// Try not stepping... assert(q.step());
-	assert(q.get!(int, int) == tuple(1, 2));
-
-	struct Test {
-		int a, b;
-	}
-
-	auto test = q.get!Test;
-	assert(test.a == 1 && test.b == 2);
-
-	assert(!q.step());
-
-	q.reset();
-	assert(q.step());
-	assert(q.get!(int, int) == tuple(1, 2));
-
-	// Test exception
-	assertThrown!SQLEx(q.get!(byte[]));
-}
-
-alias Query = RefCounted!Statement;
-package alias SB = SQLBuilder;
-
 /// A sqlite3 database
 struct SQLite3 {
 
-	/** Create a SQLite3 from a database file. If file does not exist, the
-	  * database will be initialized as new
-	 */
-	this(string dbFile, int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, int busyTimeout = 500) {
-		int rc = sqlite3_open_v2(dbFile.toz, &db, flags, null);
+	/++ Create a SQLite3 from a database file. If file does not exist, the
+	  database will be initialized as new
+	 +/
+	this(in char[] dbFile, int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, int busyTimeout = 500) {
+		const rc = sqlite3_open_v2(dbFile.toz, &db, flags, null);
 		if (!rc)
 			sqlite3_busy_timeout(db, busyTimeout);
 		if (rc != SQLITE_OK) {
@@ -322,15 +102,15 @@ struct SQLite3 {
 	}
 
 	/// Execute multiple statements
-	int execSQL(string sql, out string errmsg) {
+	int execSQL(in char[] sql, out string errmsg) @trusted {
 		char* err_msg = void;
-		int rc = sqlite3_exec(db, sql.toz, null, null, &err_msg);
+		const rc = sqlite3_exec(db, sql.toz, null, null, &err_msg);
 		errmsg = err_msg.toStr;
 		return rc;
 	}
 
 	/// Execute an sql statement directly, binding the args to it
-	bool exec(Args...)(string sql, auto ref Args args) {
+	bool exec(A...)(in char[] sql, auto ref A args) {
 		auto q = query(sql, args);
 		q.step();
 		return q.lastCode == SQLITE_DONE || q.lastCode == SQLITE_ROW;
@@ -340,11 +120,11 @@ struct SQLite3 {
 	unittest {
 		mixin TEST;
 		assert(db.exec("CREATE TABLE Test(name STRING)"));
-		assert(db.exec("INSERT INTO Test VALUES (?)", "hey"));
+		assert(db.exec("INSERT INTO Test VALUES(?)", "hey"));
 	}
 
 	/// Return 'true' if database contains the given table
-	bool hasTable(string table) => query(
+	bool hasTable(in char[] table) => query(
 		"SELECT name FROM sqlite_master WHERE type='table' AND name=?",
 		table).step();
 
@@ -360,9 +140,9 @@ struct SQLite3 {
 	unittest {
 		mixin TEST;
 		assert(db.exec("CREATE TABLE MyTable(name STRING)"));
-		assert(db.exec("INSERT INTO MyTable VALUES (?)", "hey"));
+		assert(db.exec("INSERT INTO MyTable VALUES(?)", "hey"));
 		assert(db.lastRowid == 1);
-		assert(db.exec("INSERT INTO MyTable VALUES (?)", "ho"));
+		assert(db.exec("INSERT INTO MyTable VALUES(?)", "ho"));
 		assert(db.lastRowid == 2);
 		// Only insert updates the last rowid
 		assert(db.exec("UPDATE MyTable SET name=? WHERE rowid=?", "woo", 1));
@@ -372,27 +152,27 @@ struct SQLite3 {
 	}
 
 	/// Create query from string and args to bind
-	auto query(Args...)(string sql, auto ref Args args)
+	auto query(A...)(in char[] sql, auto ref A args)
 		=> Query(db, sql, args);
 
-	private auto make(State state, string prefix, string suffix, T)(T s)
+	private auto make(State state, string prefix, string suffix, alias filter = skipRowid, T)(T s)
 	if (isAggregateType!T) {
-		mixin getSQLFields!(prefix, suffix, T);
-		// Skips "rowid" field
-		static if (I >= 0)
-			return Statement(db, SB(sql!sqlFields, state),
-				s.tupleof[0 .. I], s.tupleof[I + 1 .. $]);
-		else
-			return Statement(db, SB(sql!sqlFields, state), s.tupleof);
+		mixin getSQLFields!(prefix, suffix, filter, T);
+		// Skips the field
+		auto q = Query(db, SB(sql!sqlFields, state));
+		foreach (i; FilterIndex!(filter, ColumnNames!T))
+			q.set(s.tupleof[i]);
+		return q;
 	}
 
-	auto insert(OR or = OR.None, T)(T s) if (isAggregateType!T) {
+	auto insert(OR or = OR.None, alias filter = skipRowid, T)(T s)
+	if (isAggregateType!T) {
 		import std.array : replicate;
 
 		enum qms = ",?".replicate(ColumnCount!T);
 		return make!(State.insert, or ~ "INTO " ~
 				quote(SQLName!T) ~ '(', ") VALUES(" ~
-				(qms.length ? qms[1 .. $] : qms) ~ ')')(s);
+				(qms.length ? qms[1 .. $] : qms) ~ ')', filter)(s);
 	}
 
 	bool begin() => exec("begin");
@@ -405,17 +185,28 @@ struct SQLite3 {
 		mixin TEST;
 		assert(db.begin());
 		assert(db.exec("CREATE TABLE MyTable(name TEXT)"));
-		assert(db.exec("INSERT INTO MyTable VALUES (?)", "hey"));
+		assert(db.exec("INSERT INTO MyTable VALUES(?)", "hey"));
 		assert(db.rollback());
 		assert(!db.hasTable("MyTable"));
 		assert(db.begin());
 		assert(db.exec("CREATE TABLE MyTable(name TEXT)"));
-		assert(db.exec("INSERT INTO MyTable VALUES (?)", "hey"));
+		assert(db.exec("INSERT INTO MyTable VALUES(?)", "hey"));
 		assert(db.commit());
 		assert(db.hasTable("MyTable"));
 	}
 
+	auto insertID() => lastRowid(db);
+
 	sqlite3* db;
-	mixin Manager!(db, sqlite3_close_v2);
-	alias close = free;
+	alias db this;
+
+	void close() {
+		sqlite3_close_v2(db);
+		db = null;
+	}
+}
+
+shared static this() {
+	const c = sqlite3_initialize();
+	assert(c == SQLITE_OK);
 }

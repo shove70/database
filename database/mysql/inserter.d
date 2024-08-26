@@ -245,7 +245,6 @@ struct Inserter {
 		++rows_;
 	}
 
-	// dfmt off
 	@property {
 		size_t rows() const => rows_ != 0;
 
@@ -282,12 +281,11 @@ private:
 
 	Connection conn;
 	size_t pending_,
-		flushes_,
-		fields_,
-		rows_;
+	flushes_,
+	fields_,
+	rows_;
 	string[] fieldsNames;
 	size_t[] fieldsHash;
-	// dfmt on
 }
 
 @property {
@@ -316,6 +314,6 @@ private:
 	}
 
 	string placeholders(T)(T x, bool parens = true)
-	if (is(typeof(() { auto y = x.length; })))
+	if (is(typeof(() { size_t y = x.length; })))
 		=> x.length.placeholders(parens);
 }

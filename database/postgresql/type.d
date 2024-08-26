@@ -1,49 +1,38 @@
 module database.postgresql.type;
 
+import core.bitop : bsr;
 import database.postgresql.protocol;
 import database.postgresql.packet;
 import database.postgresql.row;
-import std.algorithm;
-import std.array : appender;
+import std.conv : text;
 import std.datetime;
-import std.format : format, formattedWrite;
-import std.meta : AliasSeq;
+import std.format : formattedWrite;
 import std.traits;
-import std.typecons;
 public import database.util;
 
-alias SQLName = KeyName;
+enum isValueType(T) = !is(T == struct) || is(Unqual!T == PgSQLValue) ||
+	is(T : Date) || is(T : DateTime) || is(T : SysTime);
 
-enum isValueType(T) = !is(Unqual!T == struct) || is(Unqual!T == PgSQLValue) ||
-	is(Unqual!T == Date) || is(Unqual!T == DateTime) || is(Unqual!T == SysTime);
-
-template PgTypeof(T) if (is(Unqual!T == enum)) {
-	static if (is(Unqual!T == PgType))
-		enum PgTypeof = PgType.OID;
-	else
-		enum PgTypeof = PgTypeof!(OriginalType!T);
-}
-
-template PgTypeof(T) if (!is(Unqual!T == enum)) {
-	static if (is(T)) {
+template PgTypeof(T) {
+	static if (is(T U == enum)) {
+		static if (is(Unqual!T == PgType))
+			enum PgTypeof = PgType.OID;
+		else
+			enum PgTypeof = PgTypeof!U;
+	} else static if (is(T : typeof(null)))
+		enum PgTypeof = PgType.NULL;
+	else static if (isIntegral!T)
+		enum PgTypeof = [PgType.INT2, PgType.INT4, PgType.INT8][T.sizeof / 4];
+	else static if (isSomeString!T)
+		enum PgTypeof = PgType.TEXT;
+	else static if (isSomeChar!T)
+		enum PgTypeof = PgType.CHAR;
+	else {
 		alias U = Unqual!T;
-		static if (is(U : typeof(null)))
-			enum PgTypeof = PgType.NULL;
-		else static if (isIntegral!T) {
-			static if (T.sizeof == 4)
-				enum PgTypeof = PgType.INT4;
-			else static if (T.sizeof == 8)
-				enum PgTypeof = PgType.INT8;
-			else
-				enum PgTypeof = PgType.INT2;
-		} else static if (isSomeString!T)
-			enum PgTypeof = PgType.TEXT;
-		else static if (is(U == float))
+		static if (is(U == float))
 			enum PgTypeof = PgType.REAL;
 		else static if (is(U == double))
 			enum PgTypeof = PgType.DOUBLE;
-		else static if (isSomeChar!T)
-			enum PgTypeof = PgType.CHAR;
 		else static if (is(U == Date))
 			enum PgTypeof = PgType.DATE;
 		else static if (is(U == TimeOfDay) || is(U == PgSQLTime))
@@ -52,23 +41,22 @@ template PgTypeof(T) if (!is(Unqual!T == enum)) {
 			enum PgTypeof = PgType.TIMESTAMP;
 		else static if (is(U == SysTime))
 			enum PgTypeof = PgType.TIMESTAMPTZ;
-		else static if (is(U == ubyte[]) || is(U : ubyte[n], size_t n))
+		else static if (is(U : const(ubyte)[]) || is(U : ubyte[n], size_t n))
 			enum PgTypeof = PgType.BYTEA;
 		else
 			enum PgTypeof = PgType.UNKNOWN;
-	} else
-		enum PgTypeof = PgType.UNKNOWN;
+	}
 }
 
 @safe pure:
 
 struct PgSQLValue {
-	package this(PgType type, in void[] str) @trusted {
+	package this(PgType type, char[] str) {
 		type_ = type;
 		arr = cast(ubyte[])str;
 	}
 
-	this(T)(T) if (is(Unqual!T : typeof(null))) {
+	this(typeof(null)) {
 		type_ = PgType.NULL;
 	}
 
@@ -77,64 +65,58 @@ struct PgSQLValue {
 		p = value ? 't' : 'f';
 	}
 
-	// dfmt off
 	this(T)(T value) @trusted if (isScalarType!T && !isBoolean!T) {
-		static if (is(UT == float))			type_ = PgType.REAL;
-		else static if (isFloatingPoint!T) {type_ = PgType.DOUBLE;
+		static if (isFloatingPoint!T) {
 			static assert(T.sizeof <= 8, "Unsupported type: " ~ T.stringof);
-		} else static if (T.sizeof == 8)	type_ = PgType.INT8;
-		else static if (T.sizeof == 4)		type_ = PgType.INT4;
-		else static if (T.sizeof == 2)		type_ = PgType.INT2;
-		else
-			type_ = PgType.CHAR;
+			enum t = [PgType.REAL, PgType.DOUBLE][T.sizeof / 8];
+		} else
+			enum t = [PgType.CHAR, PgType.INT2, PgType.INT4, PgType.INT8][bsr(T.sizeof)];
+		type_ = t;
 
 		*cast(Unqual!T*)&p = value;
 	}
 
-	this(T)(T value) @trusted if (is(Unqual!T == Date)) {
+	this(Date value) @trusted {
 		type_ = PgType.DATE;
 		timestamp.date = value;
 	}
 
-	this(T)(T value) if (is(Unqual!T == TimeOfDay)) {
+	this(TimeOfDay value) {
 		this(PgSQLTime(value.hour, value.minute, value.second));
 	}
 
-	this(T)(T value) @trusted if (is(Unqual!T == PgSQLTime)) {
+	this(PgSQLTime value) @trusted {
 		type_ = PgType.TIME;
 		timestamp.time = value;
 	}
 
-	this(T)(T value) if (is(Unqual!T == DateTime)) {
+	this(DateTime value) {
 		this(PgSQLTimestamp(value.date, PgSQLTime(value.hour, value.minute, value.second)));
 	}
 
-	this(T)(T value) @trusted if (is(Unqual!T == SysTime)) {
+	this(in SysTime value) @trusted {
 		this(cast(DateTime)value);
 		type_ = PgType.TIMESTAMPTZ;
 	}
 
-	this(T)(T value) @trusted if (is(Unqual!T == PgSQLTimestamp)) {
+	this(in PgSQLTimestamp value) @trusted {
 		type_ = PgType.TIMESTAMP;
 		timestamp.date = value.date;
 		timestamp.time = value.time;
 	}
 
-	this(T)(T value) if (isSomeString!(OriginalType!T) && typeof(T.init[0]).sizeof == 1) {
+	this(const(char)[] value) @trusted {
 		type_ = PgType.VARCHAR;
 		arr = cast(ubyte[])value;
 	}
 
-	this(T)(T value) if (is(Unqual!T == ubyte[])) {
+	this(const(ubyte)[] value) @trusted {
 		type_ = PgType.BYTEA;
-		arr = value;
+		arr = cast(ubyte[])value;
 	}
 
 	void toString(R)(ref R app) @trusted const {
-		switch(type_) with (PgType) {
-		case UNKNOWN:
-		case NULL:
-			break;
+		switch (type_) with (PgType) {
 		case BOOL:
 			app.put(*cast(bool*)&p ? "TRUE" : "FALSE");
 			break;
@@ -156,20 +138,20 @@ struct PgSQLValue {
 		case DOUBLE:
 			app.formattedWrite("%g", *cast(double*)&p);
 			break;
-		case POINT, LSEG, PATH, BOX, POLYGON, LINE:
-		case TINTERVAL:
-		case CIRCLE:
-		case JSONB:
-		case BYTEA:
+		case POINT, LSEG, PATH, BOX, POLYGON, LINE,
+			TINTERVAL,
+			CIRCLE,
+			JSONB,
+		BYTEA:
 			app.formattedWrite("%s", arr);
 			break;
-		case MONEY:
-		case TEXT, NAME:
-		case BIT, VARBIT:
-		case NUMERIC:
-		case INET, CIDR, MACADDR, MACADDR8:
-		case UUID, JSON, XML:
-		case CHARA, VARCHAR:
+		case MONEY,
+			TEXT, NAME,
+			BIT, VARBIT,
+			NUMERIC,
+			INET, CIDR, MACADDR, MACADDR8,
+			UUID, JSON, XML,
+			CHARA, VARCHAR:
 			app.put(*cast(string*)&p);
 			break;
 		case DATE:
@@ -186,6 +168,8 @@ struct PgSQLValue {
 	}
 
 	string toString() const {
+		import std.array : appender;
+
 		auto app = appender!string;
 		toString(app);
 		return app[];
@@ -208,6 +192,7 @@ struct PgSQLValue {
 
 	T get(T)(lazy T def) const => !isNull ? get!T : def;
 
+	// dfmt off
 	T get(T)() @trusted const if (isScalarType!T && !is(T == enum)) {
 		switch(type_) with (PgType) {
 		case CHAR: return cast(T)*cast(char*)&p;
@@ -218,28 +203,32 @@ struct PgSQLValue {
 		case DOUBLE: return cast(T)*cast(double*)&p;
 		default:
 		}
-		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
+		throw new PgSQLErrorException(text("Cannot convert ", type_.columnTypeName,
+			" to " ~ T.stringof));
 	}
+	// dfmt on
 
-	T get(T)() @trusted const if (is(Unqual!T == SysTime)) {
+	T get(T : SysTime)() @trusted const {
 		switch (type_) with (PgType) {
 		case TIMESTAMP, TIMESTAMPTZ:
 			return timestamp.toSysTime;
 		default:
 		}
-		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
+		throw new PgSQLErrorException(text("Cannot convert ", type_.columnTypeName,
+			" to " ~ T.stringof));
 	}
 
-	T get(T)() @trusted const if (is(Unqual!T == DateTime)) {
+	T get(T : DateTime)() @trusted const {
 		switch (type_) with (PgType) {
 		case TIMESTAMP, TIMESTAMPTZ:
 			return timestamp.toDateTime;
 		default:
 		}
-		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
+		throw new PgSQLErrorException(text("Cannot convert ", type_.columnTypeName,
+			" to " ~ T.stringof));
 	}
 
-	T get(T)() @trusted const if (is(Unqual!T == TimeOfDay)) {
+	T get(T : TimeOfDay)() @trusted const {
 		switch (type_) with (PgType) {
 		case TIME, TIMETZ:
 			return time.toTimeOfDay;
@@ -247,49 +236,52 @@ struct PgSQLValue {
 			return timestamp.toTimeOfDay;
 		default:
 		}
-		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
+		throw new PgSQLErrorException(text("Cannot convert ", type_.columnTypeName,
+			" to " ~ T.stringof));
 	}
 
-	T get(T)() @trusted const if (is(Unqual!T == Duration)) {
+	T get(T : Duration)() @trusted const {
 		switch (type_) with (PgType) {
-		case TIME, TIMETZ:
-		case TIMESTAMP, TIMESTAMPTZ:
+		case TIME, TIMETZ,
+			TIMESTAMP, TIMESTAMPTZ:
 			return timestamp.time.toDuration;
 		default:
 		}
-		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
+		throw new PgSQLErrorException(text("Cannot convert ", type_.columnTypeName,
+			" to " ~ T.stringof));
 	}
 
-	T get(T)() @trusted const if (is(Unqual!T == Date)) {
+	T get(T)() @trusted const if (is(T : Date)) {
 		switch (type_) with (PgType) {
-		case DATE:
-		case TIMESTAMP, TIMESTAMPTZ:
+		case DATE,
+			TIMESTAMP, TIMESTAMPTZ:
 			return timestamp.date;
 		default:
 		}
-		throw new PgSQLErrorException("Cannot convert %s to %s".format(type_.columnTypeName, T.stringof));
+		throw new PgSQLErrorException(text("Cannot convert ", type_.columnTypeName,
+			" to " ~ T.stringof));
 	}
 
-	T get(T)() const if (is(Unqual!T == enum))
-	=> cast(T)get!(OriginalType!T);
+	T get(T)() const if (is(T == enum))
+		=> cast(T)get!(OriginalType!T);
 
 	T get(T)() const @trusted if (isArray!T && !is(T == enum)) {
-		switch(type_) with (PgType) {
-		case NUMERIC:
-		case MONEY:
-		case BIT, VARBIT:
-		case INET, CIDR, MACADDR, MACADDR8:
-		case UUID, JSON, XML:
-		case TEXT, NAME:
-		case VARCHAR, CHARA:
-		case BYTEA:
+		switch (type_) with (PgType) {
+		case NUMERIC,
+			MONEY,
+			BIT, VARBIT,
+			INET, CIDR, MACADDR, MACADDR8,
+			UUID, JSON, XML,
+			TEXT, NAME,
+			VARCHAR, CHARA,
+		BYTEA:
 			static if (isStaticArray!T)
 				return cast(T)arr[0 .. T.sizeof];
 			else
 				return cast(T)arr.dup;
 		default:
 		}
-		throw new PgSQLErrorException("Cannot convert %s to array".format(type_.columnTypeName));
+		throw new PgSQLErrorException(text("Cannot convert ", type_.columnTypeName, " to array"));
 	}
 
 	T peek(T)(lazy T def) const => !isNull ? peek!T : def;
@@ -297,22 +289,22 @@ struct PgSQLValue {
 	T peek(T)() const if (is(T == struct) || isStaticArray!T) => get!T;
 
 	T peek(T)() @trusted const if (is(T == U[], U)) {
-		switch(type_) with (PgType) {
-		case NUMERIC:
-		case MONEY:
-		case BIT, VARBIT:
-		case INET, CIDR, MACADDR, MACADDR8:
-		case UUID, JSON, XML:
-		case TEXT, NAME:
-		case VARCHAR, CHARA:
+		switch (type_) with (PgType) {
+		case NUMERIC,
+			MONEY,
+			BIT, VARBIT,
+			INET, CIDR, MACADDR, MACADDR8,
+			UUID, JSON, XML,
+			TEXT, NAME,
+			VARCHAR, CHARA:
 			return cast(T)arr;
 		default:
 		}
-		throw new PgSQLErrorException("Cannot convert %s to array".format(type_.columnTypeName));
+		throw new PgSQLErrorException(text("Cannot convert ", type_.columnTypeName, " to array"));
 	}
 
 	size_t toHash() const @nogc @trusted pure nothrow
-	=> *cast(size_t*)&p ^ (type_ << 24);
+		=> *cast(size_t*)&p ^ (type_ << 24);
 
 	@property nothrow @nogc {
 
@@ -323,14 +315,14 @@ struct PgSQLValue {
 		PgType type() const => type_;
 
 		bool isString() const {
-			switch(type_) with (PgType) {
-			case NUMERIC:
-			case MONEY:
-			case BIT, VARBIT:
-			case INET, CIDR, MACADDR, MACADDR8:
-			case UUID, JSON, XML:
-			case TEXT, NAME:
-			case VARCHAR, CHARA:
+			switch (type_) with (PgType) {
+			case NUMERIC,
+				MONEY,
+				BIT, VARBIT,
+				INET, CIDR, MACADDR, MACADDR8,
+				UUID, JSON, XML,
+				TEXT, NAME,
+				VARCHAR, CHARA:
 				return true;
 			default:
 			}
@@ -338,10 +330,10 @@ struct PgSQLValue {
 		}
 
 		bool isScalar() const {
-			switch(type_) with (PgType) {
-			case BOOL, CHAR:
-			case INT2, INT4, INT8:
-			case REAL, DOUBLE:
+			switch (type_) with (PgType) {
+			case BOOL, CHAR,
+				INT2, INT4, INT8,
+				REAL, DOUBLE:
 				return true;
 			default:
 			}
@@ -356,10 +348,9 @@ struct PgSQLValue {
 
 		bool isTimestamp() const => type_ == PgType.TIMESTAMP || type_ == PgType.TIMESTAMPTZ;
 	}
-	// dfmt on
 
 private:
-	static if (size_t.sizeof == 8) {
+	static if (size_t.sizeof > 4) {
 		union {
 			struct {
 				uint length;
@@ -371,15 +362,20 @@ private:
 			PgSQLTimestamp timestamp;
 		}
 
-		@property ubyte[] arr() @trusted const {
-			auto arr = cast(ubyte[])_arr;
-			arr.length &= uint.max;
-			return arr;
+		@property const(ubyte)[] arr() @trusted const {
+			union Array {
+				const ubyte[] arr;
+				size_t length;
+			}
+
+			auto u = Array(_arr);
+			u.length &= uint.max;
+			return u.arr;
 		}
 
 		@property ubyte[] arr(ubyte[] arr) @trusted
 		in (arr.length <= uint.max) {
-			auto type = type_;
+			const type = type_;
 			_arr = arr;
 			type_ = type;
 			return arr;
@@ -545,19 +541,7 @@ struct PgSQLTimestamp {
 	}
 }
 
-private void skip(ref string x, in char ch) {
-	if (!x.length || x[0] != ch)
-		throw new PgSQLProtocolException("Bad datetime string format");
-	x = x[1 .. $];
-}
-
-private void skip(ref string x) {
-	if (!x.length)
-		throw new PgSQLProtocolException("Bad datetime string format");
-	x = x[1 .. $];
-}
-
-auto parseDate(ref string x) {
+auto parseDate(ref scope const(char)[] x) {
 	int year = x.parse!int(0);
 	x.skip('-');
 	int month = x.parse!int(0);
@@ -566,7 +550,7 @@ auto parseDate(ref string x) {
 	return Date(year, month, day);
 }
 
-auto parsePgSQLTime(ref string x) {
+auto parsePgSQLTime(ref scope const(char)[] x) {
 	auto hour = x.parse!uint(0);
 	x.skip(':');
 	auto minute = x.parse!uint(0);
@@ -603,9 +587,22 @@ auto parsePgSQLTime(ref string x) {
 	return res;
 }
 
-auto parsePgSQLTimestamp(ref string x) {
+auto parsePgSQLTimestamp(ref scope const(char)[] x) {
 	auto date = parseDate(x);
 	x.skip();
 	auto time = parsePgSQLTime(x);
 	return PgSQLTimestamp(date, time);
+}
+
+private:
+void skip(ref scope const(char)[] x, char ch) {
+	if (!x.length || x[0] != ch)
+		throw new PgSQLProtocolException("Bad datetime string format");
+	x = x[1 .. $];
+}
+
+void skip(ref scope const(char)[] x) {
+	if (!x.length)
+		throw new PgSQLProtocolException("Bad datetime string format");
+	x = x[1 .. $];
 }

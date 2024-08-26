@@ -18,9 +18,8 @@ import std.datetime;
 
 alias Socket = DBSocket!MySQLConnectionException;
 
-immutable CapabilityFlags DefaultClientCaps = CapabilityFlags.CLIENT_LONG_PASSWORD | CapabilityFlags.CLIENT_LONG_FLAG |
-	CapabilityFlags.CLIENT_CONNECT_WITH_DB | CapabilityFlags.CLIENT_PROTOCOL_41 | CapabilityFlags
-		.CLIENT_SECURE_CONNECTION | CapabilityFlags.CLIENT_SESSION_TRACK;
+enum DefaultClientCaps = CF.CLIENT_LONG_PASSWORD | CF.CLIENT_LONG_FLAG | CF.CLIENT_CONNECT_WITH_DB | CF
+		.CLIENT_PROTOCOL_41 | CF.CLIENT_SECURE_CONNECTION | CF.CLIENT_SESSION_TRACK;
 
 struct Status {
 	ulong affected;
@@ -32,49 +31,11 @@ struct Status {
 	ushort warnings;
 }
 
-private struct ConnectionSettings {
-	this(const(char)[] connectionString) {
-		auto remaining = connectionString;
+private:
 
-		auto indexValue = remaining.indexOf('=');
-		while (!remaining.empty) {
-			auto indexValueEnd = remaining.indexOf(';', indexValue);
-			if (indexValueEnd <= 0)
-				indexValueEnd = remaining.length;
+alias CF = CapabilityFlags;
 
-			auto name = strip(remaining[0 .. indexValue]);
-			auto value = strip(remaining[indexValue + 1 .. indexValueEnd]);
-
-			switch (name) {
-			case "host":
-				host = value;
-				break;
-			case "user":
-				user = value;
-				break;
-			case "pwd":
-				pwd = value;
-				break;
-			case "db":
-				db = value;
-				break;
-			case "port":
-				port = to!ushort(value);
-				break;
-			default:
-				throw new MySQLException(format("Bad connection string: %s", connectionString));
-			}
-
-			if (indexValueEnd == remaining.length)
-				return;
-
-			remaining = remaining[indexValueEnd + 1 .. $];
-			indexValue = remaining.indexOf("=");
-		}
-
-		throw new MySQLException(format("Bad connection string: %s", connectionString));
-	}
-
+struct ConnectionSettings {
 	CapabilityFlags caps = DefaultClientCaps;
 
 	const(char)[] host;
@@ -84,7 +45,7 @@ private struct ConnectionSettings {
 	ushort port = 3306;
 }
 
-private struct ServerInfo {
+struct ServerInfo {
 	const(char)[] versionStr;
 	ubyte protocol;
 	ubyte charSet;
@@ -93,24 +54,14 @@ private struct ServerInfo {
 	uint caps;
 }
 
-private struct PreparedStatement {
+struct PreparedStatement {
 	uint id;
 	uint params;
 }
 
+public:
+
 class Connection {
-	this(string connectionString, CapabilityFlags caps = DefaultClientCaps) {
-		settings_ = ConnectionSettings(connectionString);
-		settings_.caps = caps | CapabilityFlags.CLIENT_LONG_PASSWORD | CapabilityFlags
-			.CLIENT_PROTOCOL_41;
-
-		connect();
-	}
-
-	this(const(char)[] host, const(char)[] user, const(char)[] pwd, const(char)[] db, ushort port = 3306) {
-		this(host, user, pwd, db, port, DefaultClientCaps);
-	}
-
 	this(const(char)[] host, const(char)[] user, const(char)[] pwd, const(char)[] db, ushort port = 3306, CapabilityFlags caps = DefaultClientCaps) {
 		settings_.host = host;
 		settings_.user = user;
@@ -123,7 +74,7 @@ class Connection {
 		connect();
 	}
 
-	void use(const(char)[] db) {
+	void use(in char[] db) {
 		send(Commands.COM_INIT_DB, db);
 		eatStatus(retrieve());
 
@@ -305,10 +256,10 @@ class Connection {
 		static if (args.length == 0) {
 			enum shouldDiscard = true;
 		} else {
-			enum shouldDiscard = !isCallable!(args[args.length - 1]);
+			enum shouldDiscard = !isCallable!(args[$ - 1]);
 		}
 
-		enum argCount = shouldDiscard ? args.length : (args.length - 1);
+		enum argCount = shouldDiscard ? args.length : args.length - 1;
 
 		if (!argCount && stmt.params) {
 			throw new MySQLErrorException(format("Wrong number of parameters for query. Got 0 but expected %d.", stmt
@@ -325,7 +276,7 @@ class Connection {
 				const auto index = (indexArg >> 3) & (NullsCapacity - 1);
 				const auto bit = indexArg & 7;
 
-				static if (is(typeof(arg) == typeof(null))) {
+				static if (is(typeof(arg) : typeof(null))) {
 					nulls[index] = nulls[index] | (1 << bit);
 					++indexArg;
 				} else static if (is(Unqual!(typeof(arg)) == MySQLValue)) {
@@ -419,7 +370,7 @@ class Connection {
 
 	@property bool connected() const => socket && socket.isAlive;
 
-	void close() {
+	void close() nothrow {
 		clearClientPreparedCache();
 		socket.close();
 		socket = null;
@@ -453,9 +404,8 @@ package(database):
 	@property void busy(bool value) {
 		busy_ = value;
 
-		if (!value) {
+		if (!value)
 			clearClientPreparedCache();
-		}
 	}
 
 private:
@@ -492,13 +442,13 @@ private:
 		}
 	}
 
-	void clearClientPreparedCache() {
-		if (clientPreparedCaches_.length == 0) {
+	void clearClientPreparedCache() nothrow {
+		if (clientPreparedCaches_.length == 0)
 			return;
-		}
-
-		foreach (p; clientPreparedCaches_) {
-			closePreparedStatement(p);
+		try
+			foreach (p; clientPreparedCaches_) {
+				closePreparedStatement(p);
+			} catch (Exception) {
 		}
 
 		clientPreparedCaches_.clear();
@@ -508,8 +458,8 @@ private:
 		auto id = packet.peek!ubyte;
 
 		switch (id) {
-		case StatusPackets.ERR_Packet:
-		case StatusPackets.OK_Packet:
+		case StatusPackets.ERR_Packet,
+			StatusPackets.OK_Packet:
 			return true;
 		default:
 			return false;
@@ -520,8 +470,8 @@ private:
 		auto id = packet.peek!ubyte;
 
 		switch (id) {
-		case StatusPackets.ERR_Packet:
-		case StatusPackets.OK_Packet:
+		case StatusPackets.ERR_Packet,
+			StatusPackets.OK_Packet:
 			eatStatus(packet, smallError);
 			break;
 		default:
@@ -693,11 +643,11 @@ private:
 								schema_.length = cast(size_t)packet.eatLenEnc();
 								schema_[] = packet.eat!(const(char)[])(schema_.length);
 								break;
-							case SESSION_TRACK_SYSTEM_VARIABLES:
-							case SESSION_TRACK_GTIDS:
-							case SESSION_TRACK_STATE_CHANGE:
-							case SESSION_TRACK_TRANSACTION_STATE:
-							case SESSION_TRACK_TRANSACTION_CHARACTERISTICS:
+							case SESSION_TRACK_SYSTEM_VARIABLES,
+								SESSION_TRACK_GTIDS,
+								SESSION_TRACK_STATE_CHANGE,
+								SESSION_TRACK_TRANSACTION_STATE,
+								SESSION_TRACK_TRANSACTION_CHARACTERISTICS:
 								packet.skip(cast(size_t)packet.eatLenEnc());
 								break;
 							}
@@ -743,8 +693,8 @@ private:
 			info(packet.eat!(const(char)[])(packet.remaining));
 
 			switch (status_.error) {
-			case ErrorCodes.ER_DUP_ENTRY_WITH_KEY_NAME:
-			case ErrorCodes.ER_DUP_ENTRY:
+			case ErrorCodes.ER_DUP_ENTRY_WITH_KEY_NAME,
+				ErrorCodes.ER_DUP_ENTRY:
 				throw new MySQLDuplicateEntryException(info_.idup);
 			case ErrorCodes.ER_DATA_TOO_LONG_FOR_COL:
 				throw new MySQLDataTooLongException(info_.idup);
@@ -876,7 +826,7 @@ private:
 			const auto bit = (i + 2) & 7;
 
 			if ((nulls[index] & (1 << bit)) == 0) {
-				eatValue(packet, column, row.get_(i));
+				row.get_(i) = eatValue(packet, column);
 			} else {
 				auto signed = (column.flags & FieldFlags.UNSIGNED_FLAG) == 0;
 				row.get_(i) = MySQLValue(column.name, ColumnTypes.MYSQL_TYPE_NULL, signed, null, 0);
@@ -947,7 +897,7 @@ private:
 
 		foreach (i, ref column; header) {
 			if (packet.peek!ubyte != 0xfb) {
-				eatValueText(packet, column, row.get_(i));
+				row.get_(i) = eatValueText(packet, column);
 			} else {
 				packet.skip(1);
 				auto signed = (column.flags & FieldFlags.UNSIGNED_FLAG) == 0;
@@ -1027,7 +977,7 @@ private:
 		size_t argCount;
 
 		foreach (i, arg; args) {
-			static if (is(typeof(arg) == typeof(null))) {
+			static if (is(typeof(arg) : typeof(null))) {
 				++argCount;
 				estimated += 4;
 			} else static if (is(Unqual!(typeof(arg)) == MySQLValue)) {
@@ -1039,12 +989,12 @@ private:
 				case MYSQL_TYPE_TINY:
 					estimated += 4;
 					break;
-				case MYSQL_TYPE_YEAR:
-				case MYSQL_TYPE_SHORT:
+				case MYSQL_TYPE_YEAR,
+					MYSQL_TYPE_SHORT:
 					estimated += 6;
 					break;
-				case MYSQL_TYPE_INT24:
-				case MYSQL_TYPE_LONG:
+				case MYSQL_TYPE_INT24,
+					MYSQL_TYPE_LONG:
 					estimated += 6;
 					break;
 				case MYSQL_TYPE_LONGLONG:
@@ -1056,32 +1006,32 @@ private:
 				case MYSQL_TYPE_DOUBLE:
 					estimated += 8;
 					break;
-				case MYSQL_TYPE_SET:
-				case MYSQL_TYPE_ENUM:
-				case MYSQL_TYPE_VARCHAR:
-				case MYSQL_TYPE_VAR_STRING:
-				case MYSQL_TYPE_STRING:
-				case MYSQL_TYPE_JSON:
-				case MYSQL_TYPE_NEWDECIMAL:
-				case MYSQL_TYPE_DECIMAL:
-				case MYSQL_TYPE_TINY_BLOB:
-				case MYSQL_TYPE_MEDIUM_BLOB:
-				case MYSQL_TYPE_LONG_BLOB:
-				case MYSQL_TYPE_BLOB:
-				case MYSQL_TYPE_BIT:
-				case MYSQL_TYPE_GEOMETRY:
+				case MYSQL_TYPE_SET,
+					MYSQL_TYPE_ENUM,
+					MYSQL_TYPE_VARCHAR,
+					MYSQL_TYPE_VAR_STRING,
+					MYSQL_TYPE_STRING,
+					MYSQL_TYPE_JSON,
+					MYSQL_TYPE_NEWDECIMAL,
+					MYSQL_TYPE_DECIMAL,
+					MYSQL_TYPE_TINY_BLOB,
+					MYSQL_TYPE_MEDIUM_BLOB,
+					MYSQL_TYPE_LONG_BLOB,
+					MYSQL_TYPE_BLOB,
+					MYSQL_TYPE_BIT,
+					MYSQL_TYPE_GEOMETRY:
 					estimated += 2 + arg.peek!(const(char)[]).length;
 					break;
-				case MYSQL_TYPE_TIME:
-				case MYSQL_TYPE_TIME2:
+				case MYSQL_TYPE_TIME,
+					MYSQL_TYPE_TIME2:
 					estimated += 18;
 					break;
-				case MYSQL_TYPE_DATE:
-				case MYSQL_TYPE_NEWDATE:
-				case MYSQL_TYPE_DATETIME:
-				case MYSQL_TYPE_DATETIME2:
-				case MYSQL_TYPE_TIMESTAMP:
-				case MYSQL_TYPE_TIMESTAMP2:
+				case MYSQL_TYPE_DATE,
+					MYSQL_TYPE_NEWDATE,
+					MYSQL_TYPE_DATETIME,
+					MYSQL_TYPE_DATETIME2,
+					MYSQL_TYPE_TIMESTAMP,
+					MYSQL_TYPE_TIMESTAMP2:
 					estimated += 20;
 					break;
 				}
@@ -1191,9 +1141,9 @@ private auto copyUpToNext(ref Appender!(char[]) app, ref const(char)[] sql) {
 			} else {
 				goto default;
 			}
-		case '\'':
-		case '\"':
-		case '`':
+		case '\'',
+			'\"',
+			'`':
 			if (quote == ch) {
 				quote = '\0';
 			} else if (!quote) {

@@ -1,11 +1,8 @@
 module database.mysql.row;
 
-import std.traits;
-import std.typecons;
 import database.mysql.exception;
 import database.mysql.type;
 public import database.row;
-import database.util;
 
 private uint hashOf(const(char)[] x)
 {
