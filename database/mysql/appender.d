@@ -5,6 +5,11 @@ import std.traits;
 import std.typecons;
 import database.mysql.type;
 
+/++ Append an array of values as comma-separated SQL literals.
+
+Values are appended directly using `appendValue` and separated with `,` for SQL
+`(...,...)` style payloads.
++/
 void appendValues(R, T)(ref R appender, T values)
 if (isArray!T && !isSomeString!(OriginalType!T)) {
 	foreach (i, value; values) {
@@ -14,21 +19,28 @@ if (isArray!T && !isSomeString!(OriginalType!T)) {
 	}
 }
 
+/++ Append a SQL `NULL` literal. +/
 void appendValue(R)(ref R appender, typeof(null)) {
 	appender.put("null");
 }
 
+/++ Append a value that may be nullable.
+
+`Nullable` and `NullableRef` are unwrapped so empty values become SQL `NULL`.
++/
 void appendValue(R, T)(ref R appender, T value)
 if (isInstanceOf!(Nullable, T) || isInstanceOf!(NullableRef, T)) {
 	appendValue(appender, value.isNull ? null : value.get);
 }
 
+/++ Append scalar values by converting to string form. +/
 void appendValue(R, T)(ref R appender, T value) if (isScalarType!T) {
 	import std.conv : to;
 
 	appender.put(cast(ubyte[])to!string(value));
 }
 
+/++ Append a UTC timestamp value in MySQL literal format. +/
 void appendValue(R)(ref R appender, SysTime value) {
 	value = value.toUTC;
 
@@ -45,26 +57,37 @@ void appendValue(R)(ref R appender, SysTime value) {
 	}
 }
 
+/++ Append a `DateTime` value in numeric timestamp format. +/
 void appendValue(R)(ref R appender, DateTime value) {
 	auto hour = value.hour;
 	auto minute = value.minute;
 	auto second = value.second;
 
 	if (hour | minute | second) {
-		formattedWrite(appender, "%04d%02d%02d%02d%02d%02d", value.year, value.month, value.day, hour, minute, second);
+		formattedWrite(appender,
+			"%04d%02d%02d%02d%02d%02d",
+			value.year,
+			value.month,
+			value.day,
+			hour,
+			minute,
+			second);
 	} else {
 		formattedWrite(appender, "%04d%02d%02d", value.year, value.month, value.day);
 	}
 }
 
+/++ Append a `TimeOfDay` value as `HHmmss`. +/
 void appendValue(R)(ref R appender, TimeOfDay value) {
 	formattedWrite(appender, "%02d%02d%02d", value.hour, value.minute, value.second);
 }
 
+/++ Append a `Date` as `YYYYMMDD`. +/
 void appendValue(R)(ref R appender, Date value) {
 	formattedWrite(appender, "%04d%02d%02d", value.year, value.month, value.day);
 }
 
+/++ Append a `Duration` as an SQL interval-style fragment. +/
 void appendValue(R)(ref R appender, Duration value) {
 	auto parts = value.split();
 	if (parts.days) {
@@ -78,20 +101,24 @@ void appendValue(R)(ref R appender, Duration value) {
 		appender.put('\'');
 }
 
+/++ Append a raw SQL fragment that was already encoded by the caller. +/
 void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == MySQLFragment)) {
 	appender.put(cast(char[])value.data);
 }
 
+/++ Append a raw string value enclosed in single quotes. +/
 void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == MySQLRawString)) {
 	appender.put('\'');
 	appender.put(cast(char[])value.data);
 	appender.put('\'');
 }
 
+/++ Append binary payload bytes without altering their values. +/
 void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == MySQLBinary)) {
 	appendValue(appender, value.data);
 }
 
+/++ Append a typed `MySQLValue` using the protocol-aware formatting rules. +/
 void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == MySQLValue)) {
 	final switch (value.type) with (ColumnTypes) {
 	case MYSQL_TYPE_NULL:
@@ -166,6 +193,7 @@ void appendValue(R, T)(ref R appender, T value) if (is(Unqual!T == MySQLValue)) 
 	}
 }
 
+/++ Append textual byte arrays and escape SQL quote characters. +/
 void appendValue(R, T)(ref R appender, T value)
 if (isArray!T && (is(Unqual!(typeof(T.init[0])) == ubyte) || is(Unqual!(typeof(T.init[0])) == char))) {
 	appender.put('\'');

@@ -4,6 +4,13 @@ import database.mysql.exception;
 import database.mysql.type;
 public import database.row;
 
+/++ MySQL row type alias backed by the shared generic row container.
+
+The row adapter provides case-insensitive lookup helpers and reflective
+mapping behavior via the shared `Row` template.
++/
+alias MySQLRow = Row!(MySQLValue, MySQLHeader, MySQLErrorException, hashOf, Mixin);
+
 private uint hashOf(const(char)[] x)
 {
 	import std.ascii;
@@ -14,8 +21,6 @@ private uint hashOf(const(char)[] x)
 
 	return hash;
 }
-
-alias MySQLRow = Row!(MySQLValue, MySQLHeader, MySQLErrorException, hashOf, Mixin);
 
 private template Mixin()
 {

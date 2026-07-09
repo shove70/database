@@ -14,58 +14,84 @@ import database.mysql.exception;
 import database.mysql.row;
 public import database.util;
 
+/++ Unwrap one level of `Nullable<T>` to the underlying type. +/
 alias Unnull(N : Nullable!T, T) = T;
+
+/++ Remove one level of `Nullable` and qualifiers. +/
 alias Unnull(T) = T;
 
+/++ Normalized helper for value-type checks on nullable inputs. +/
 alias Unboth(T) = Unqual!(Unnull!T);
+
+/++ Whether `T` is a duration-like type for MySQL mappings. +/
 enum isSomeDuration(T) = is(Unboth!T == Date) || is(Unboth!T == DateTime) || is(Unboth!T == SysTime) || is(
 		Unboth!T == Duration) || is(Unboth!T == TimeOfDay);
+
+/++ Public value-type predicate used by the SQL binding layer. +/
 enum isValueType(T) = isSomeDuration!(Unboth!T) || is(Unboth!T == MySQLValue) || (
 		!is(Unboth!T == struct) && !is(Unboth!T == class));
 
+/++ String wrapper for raw SQL fragments that must not be escaped. +/
 struct MySQLRawString {
 	@disable this();
 
+	/++ Construct a raw SQL fragment wrapper from UTF-8 text. +/
 	this(const(char)[] data) {
 		data_ = data;
 	}
 
+	/++ Length of the wrapped data. +/
 	@property auto length() const => data_.length;
 
+	/++ Read-only access to the wrapped text. +/
 	@property auto data() const => data_;
 
 	private const(char)[] data_;
 }
 
+/++ Lightweight wrapper for preformatted fragments inserted verbatim. +/
 struct MySQLFragment {
 	@disable this();
 
+	/++ Construct a reusable SQL fragment wrapper from UTF-8 text. +/
 	this(const(char)[] data) {
 		data_ = data;
 	}
 
+	/++ Length of the wrapped fragment. +/
 	@property auto length() const => data_.length;
 
+	/++ Read-only access to the wrapped fragment. +/
 	@property auto data() const => data_;
 
 	private const(char)[] data_;
 }
 
+/++ Opaque binary payload wrapper for BLOB values. +/
 struct MySQLBinary {
+	/++ Create a binary wrapper by viewing raw bytes of array-like input. +/
 	this(T)(T[] data) {
 		data_ = (cast(ubyte*)data.ptr)[0 .. typeof(T[].init[0]).sizeof * data.length];
 	}
 
+	/++ Byte length of binary payload. +/
 	@property auto length() const => data_.length;
 
+	/++ Read-only binary payload view. +/
 	@property auto data() const => data_;
 
 	private const(ubyte)[] data_;
 }
 
+/++ Runtime value container for MySQL result and bind values. +/
 struct MySQLValue {
+	/++ Maximum byte width required by supported value payloads. +/
 	package enum BufferSize = max(ulong.sizeof, (ulong[]).sizeof, MySQLDateTime.sizeof, MySQLTime.sizeof);
 
+	/++ Construct from raw packet bytes and a column type.
+
+	Used for protocol decoding.
++/
 	package this(const(char)[] name, ColumnTypes type, bool signed, void* ptr, size_t size) {
 		assert(size <= BufferSize);
 		type_ = type;
@@ -75,15 +101,18 @@ struct MySQLValue {
 		name_ = name;
 	}
 
+	/++ Construct a SQL `NULL` value. +/
 	this(typeof(null)) {
 		type_ = ColumnTypes.MYSQL_TYPE_NULL;
 		sign_ = 0x00;
 	}
 
+	/++ Copy constructor for `MySQLValue` reuse with same internal representation. +/
 	this(T)(T value) if (is(Unqual!T == MySQLValue)) {
 		this = value;
 	}
 
+	/++ Construct from floating-point numeric types (`float`, `double`). +/
 	this(T)(T value) if (std.traits.isFloatingPoint!T) {
 		alias UT = Unqual!T;
 
@@ -101,6 +130,7 @@ struct MySQLValue {
 		}
 	}
 
+	/++ Construct from integral values (`byte`/`short`/`int`/`long` and unsigned variants). +/
 	this(T)(T value) if (__traits(isIntegral, T)) {
 		static if (T.sizeof == 8) {
 			type_ = ColumnTypes.MYSQL_TYPE_LONGLONG;
@@ -116,18 +146,21 @@ struct MySQLValue {
 		buffer_[0 .. T.sizeof] = (cast(ubyte*)&value)[0 .. T.sizeof];
 	}
 
+	/++ Construct from date/time values (`Date`, `DateTime`, `SysTime`). +/
 	this(T)(T value) if (is(T : Date) || is(T : DateTime) || is(T : SysTime)) {
 		type_ = ColumnTypes.MYSQL_TYPE_TIMESTAMP;
 		sign_ = 0x00;
 		(*cast(MySQLDateTime*)buffer_) = MySQLDateTime.from(value);
 	}
 
+	/++ Construct from duration-like values (`Duration`, `TimeOfDay`). +/
 	this(T)(T value) if (is(T : Duration) || is(T : TimeOfDay)) {
 		type_ = ColumnTypes.MYSQL_TYPE_TIME;
 		sign_ = 0x00;
 		(*cast(MySQLTime*)buffer_) = MySQLTime.from(value);
 	}
 
+	/++ Construct from textual data for textual SQL types. +/
 	this(T)(T value) if (isSomeString!(OriginalType!T)) {
 		static assert(typeof(T.init[0]).sizeof == 1, "Unsupported string type: " ~ T.stringof);
 
@@ -138,12 +171,14 @@ struct MySQLValue {
 		buffer_.ptr[0 .. typeof(slice).sizeof] = (cast(ubyte*)&slice)[0 .. typeof(slice).sizeof];
 	}
 
+	/++ Construct from binary payload wrappers and store as `BLOB`. +/
 	this(T)(T value) if (is(Unqual!T == MySQLBinary)) {
 		type_ = ColumnTypes.MYSQL_TYPE_BLOB;
 		sign_ = 0x80;
 		buffer_.ptr[0 .. (ubyte[]).sizeof] = (cast(ubyte*)&value.data_)[0 .. (ubyte[]).sizeof];
 	}
 
+	/++ Serialize this value into SQL representation using protocol-compatible formatting. +/
 	void toString(Appender)(ref Appender app) const {
 		final switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_NULL:
@@ -225,12 +260,14 @@ struct MySQLValue {
 		}
 	}
 
+	/++ Convert to string using allocator-backed rendering. +/
 	string toString() const {
 		auto app = appender!string;
 		toString(app);
 		return app.data;
 	}
 
+	/++ Compare two `MySQLValue` values with type-aware coercion. +/
 	bool opEquals(MySQLValue other) const {
 		if (isString && other.isString) {
 			return peek!string == other.peek!string;
@@ -251,8 +288,14 @@ struct MySQLValue {
 		return false;
 	}
 
+	/++ Get value with a fallback for `NULL`.
+
+	The overload set also includes scalar/date/time/duration/array/enum conversions for
+	`T` and nullable values.
++/
 	T get(T)(lazy T def) const => !isNull ? get!T : def;
 
+	/++ Convert non-enum scalar numeric values from the stored representation. +/
 	T get(T)() const if (isScalarType!T && !is(T == enum)) {
 		switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_TINY:
@@ -275,6 +318,7 @@ struct MySQLValue {
 		}
 	}
 
+	/++ Convert to date/time values (`Date`, `DateTime`, `SysTime`). +/
 	T get(T)() const
 	if (is(T : SysTime) || is(T : DateTime) || is(T : Date)) {
 		switch (type_) with (ColumnTypes) {
@@ -291,6 +335,7 @@ struct MySQLValue {
 		}
 	}
 
+	/++ Convert to `TimeOfDay`. +/
 	T get(T)() const if (is(T : TimeOfDay)) {
 		switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_DATE,
@@ -309,6 +354,7 @@ struct MySQLValue {
 		}
 	}
 
+	/++ Convert to `Duration` for duration-like SQL types. +/
 	T get(T)() const if (is(T : Duration)) {
 		switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_TIME,
@@ -320,8 +366,10 @@ struct MySQLValue {
 		}
 	}
 
+	/++ Convert enum values through the underlying stored scalar type. +/
 	T get(T)() const if (is(T == enum)) => cast(T)get!(OriginalType!T);
 
+	/++ Convert string/binary and generic static/dynamic arrays. +/
 	T get(T)() const if (isArray!T && !is(T == enum)) {
 		switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_SET,
@@ -346,21 +394,31 @@ struct MySQLValue {
 		}
 	}
 
+	/++ Convert nullable containers; returns `T.init` for SQL `NULL`. +/
 	T get(T)() const if (isInstanceOf!(Nullable, T)) {
 		if (type_ == ColumnTypes.MYSQL_TYPE_NULL)
 			return T.init;
 		return T(get!(typeof(T.init.get)));
 	}
 
+	/++ Access values with fallback and typed `peek` overloads.
+
+	`peek` overloads share the same type conversion behavior as `get`, but keep
+	the same fallback semantics as `MySQLValue.this`.
++/
 	T peek(T)(lazy T def) const => !isNull ? peek!T : def;
 
+	/++ Peek scalar values by type. +/
 	T peek(T)() const if (isScalarType!T) => get!T;
 
+	/++ Peek date/time values by type. +/
 	T peek(T)() const if (is(T : SysTime) || is(T : DateTime) ||
 		is(T : Date) || is(T : TimeOfDay)) => get!T;
 
+	/++ Peek duration values by type. +/
 	T peek(T)() const if (is(T : Duration)) => get!T;
 
+	/++ Peek array values by type. +/
 	T peek(T)() const if (isArray!T) {
 		switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_SET,
@@ -385,12 +443,16 @@ struct MySQLValue {
 		}
 	}
 
+	/++ Whether this is SQL `NULL`. +/
 	bool isNull() const => type_ == ColumnTypes.MYSQL_TYPE_NULL;
 
+	/++ Access underlying MySQL column type enum. +/
 	ColumnTypes type() const => type_;
 
+	/++ Whether the value has a signed numeric representation. +/
 	bool isSigned() const => sign_ == 0x00;
 
+	/++ Whether this value should be treated as string-like data. +/
 	bool isString() const {
 		final switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_NULL:
@@ -433,6 +495,7 @@ struct MySQLValue {
 		}
 	}
 
+	/++ Whether this value is numeric scalar. +/
 	bool isScalar() const {
 		final switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_NULL:
@@ -475,6 +538,7 @@ struct MySQLValue {
 		}
 	}
 
+	/++ Whether this value is floating-point (`FLOAT`/`DOUBLE`). +/
 	bool isFloatingPoint() const {
 		final switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_NULL:
@@ -518,6 +582,7 @@ struct MySQLValue {
 		}
 	}
 
+	/++ Whether this value is `TIME`/`TIME2`. +/
 	bool isTime() const {
 		final switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_NULL:
@@ -560,8 +625,10 @@ struct MySQLValue {
 		}
 	}
 
+	/++ Alias for duration-like values (`isTime`). +/
 	alias isDuration = isTime;
 
+	/++ Whether this value is a date/time family type. +/
 	bool isDateTime() const {
 		final switch (type_) with (ColumnTypes) {
 		case MYSQL_TYPE_NULL:
@@ -616,23 +683,37 @@ private:
 }
 
 struct MySQLColumn {
+	/++ Column length in bytes as defined by server metadata. +/
 	uint length;
+	/++ Column flags from column definition. +/
 	ushort flags;
+	/++ Number of decimal digits, when applicable. +/
 	ubyte decimals;
+	/++ Column type from protocol metadata. +/
 	ColumnTypes type;
+	/++ Column name from result set metadata. +/
 	string name;
 }
 
+/++ Convenience alias for a list of column descriptors. +/
 alias MySQLHeader = MySQLColumn[];
 
+/++ MySQL duration-like type used by TIME columns. +/
 struct MySQLTime {
+	/++ Elapsed day component. +/
 	uint days;
+	/++ Signed flag (`1` when negative). +/
 	ubyte negative;
+	/++ Hour component in the stored range. +/
 	ubyte hours;
+	/++ Minute component. +/
 	ubyte mins;
+	/++ Second component. +/
 	ubyte secs;
+	/++ Sub-second microseconds. +/
 	uint usecs;
 
+	/++ Convert to typed temporal duration target. +/
 	auto to(T : Duration)() const {
 		auto total = days * 86400_000_000L +
 			hours * 3600_000_000L +
@@ -642,9 +723,11 @@ struct MySQLTime {
 		return cast(T)dur!"usecs"(negative ? -total : total);
 	}
 
+	/++ Convert to `TimeOfDay` preserving local clock fields. +/
 	auto to(T : TimeOfDay)() const
 		=> cast(T)TimeOfDay(hours, mins, secs);
 
+	/++ Convert from `Duration` by decomposing days/hours/min/sec/usecs. +/
 	static MySQLTime from(Duration duration) {
 		MySQLTime time;
 		duration.abs.split!("days", "hours", "minutes", "seconds", "usecs")(time.days, time.hours, time.mins, time
@@ -653,6 +736,7 @@ struct MySQLTime {
 		return time;
 	}
 
+	/++ Convert from `TimeOfDay` (zero days, non-negative). +/
 	static MySQLTime from(TimeOfDay tod) {
 		MySQLTime time;
 		time.hours = tod.hour;
@@ -662,6 +746,7 @@ struct MySQLTime {
 	}
 }
 
+/++ Encode `MySQLTime` into protocol wire format. +/
 void putMySQLTime(ref OutputPacket packet, in MySQLTime time) {
 	if (time.days || time.hours || time.mins || time.mins || time.usecs) {
 		auto usecs = time.usecs != 0;
@@ -678,6 +763,7 @@ void putMySQLTime(ref OutputPacket packet, in MySQLTime time) {
 	}
 }
 
+/++ Decode protocol-encoded `MySQLTime`. +/
 auto eatMySQLTime(ref InputPacket packet) {
 	MySQLTime time;
 	switch (packet.eat!ubyte) {
@@ -705,34 +791,48 @@ auto eatMySQLTime(ref InputPacket packet) {
 	return time;
 }
 
+/++ Packed SQL datetime value used for temporal MySQL fields. +/
 struct MySQLDateTime {
+	/++ Year component. +/
 	ushort year;
+	/++ Month component. +/
 	ubyte month;
+	/++ Day component. +/
 	ubyte day;
+	/++ Hour component. +/
 	ubyte hour;
+	/++ Minute component. +/
 	ubyte min;
+	/++ Second component. +/
 	ubyte sec;
+	/++ Microseconds fraction. +/
 	uint usec;
 
+	/++ Return false when the value is unset/invalid. +/
 	bool valid() const => month != 0;
 
+	/++ Convert to `SysTime` in UTC-based interpretation. +/
 	T to(T : SysTime)() const {
 		assert(valid());
 		return cast(T)SysTime(DateTime(year, month, day, hour, min, sec), usec.dur!"usecs", UTC());
 	}
 
+	/++ Convert to `DateTime`. +/
 	T to(T : DateTime)() const {
 		assert(valid());
 		return cast(T)DateTime(year, month, day, hour, min, sec);
 	}
 
+	/++ Convert to `Date`. +/
 	T to(T : Date)() const {
 		assert(valid());
 		return cast(T)Date(year, month, day);
 	}
 
+	/++ Convert to `TimeOfDay`. +/
 	T to(T : TimeOfDay)() const => cast(T)TimeOfDay(hour, min, sec);
 
+	/++ Build `MySQLDateTime` from `SysTime`. +/
 	static MySQLDateTime from(SysTime sysTime) {
 		MySQLDateTime time;
 
@@ -748,6 +848,7 @@ struct MySQLDateTime {
 		return time;
 	}
 
+	/++ Build `MySQLDateTime` from `DateTime`. +/
 	static MySQLDateTime from(DateTime dateTime) {
 		MySQLDateTime time;
 
@@ -761,6 +862,7 @@ struct MySQLDateTime {
 		return time;
 	}
 
+	/++ Build `MySQLDateTime` from `Date` (time set to midnight). +/
 	static MySQLDateTime from(Date date) {
 		MySQLDateTime time;
 
@@ -772,6 +874,7 @@ struct MySQLDateTime {
 	}
 }
 
+/++ Serialize `MySQLDateTime` and write its length marker. +/
 void putMySQLDateTime(ref OutputPacket packet, in MySQLDateTime time) {
 	auto marker = packet.marker!ubyte;
 	ubyte length;
@@ -798,6 +901,7 @@ void putMySQLDateTime(ref OutputPacket packet, in MySQLDateTime time) {
 	packet.put!ubyte(marker, length);
 }
 
+/++ Parse protocol payload bytes into `MySQLDateTime` with supported wire lengths. +/
 auto eatMySQLDateTime(ref InputPacket packet) {
 	MySQLDateTime time;
 	switch (packet.eat!ubyte) {
@@ -832,6 +936,7 @@ auto eatMySQLDateTime(ref InputPacket packet) {
 	return time;
 }
 
+/++ Consume a mandatory separator character in textual datetime parsing. +/
 private void skip(ref const(char)[] x, char ch) {
 	if (x.length && x.ptr[0] == ch) {
 		x = x[1 .. $];
@@ -840,6 +945,7 @@ private void skip(ref const(char)[] x, char ch) {
 	}
 }
 
+/++ Parse string `HH:MM:SS(.ffffff)` into `MySQLTime`. +/
 auto parseMySQLTime(const(char)[] x) {
 	MySQLTime time;
 
@@ -871,6 +977,7 @@ auto parseMySQLTime(const(char)[] x) {
 	return time;
 }
 
+/++ Parse SQL datetime text into `MySQLDateTime`. +/
 auto parseMySQLDateTime(const(char)[] x) {
 	MySQLDateTime time;
 
@@ -905,6 +1012,7 @@ auto parseMySQLDateTime(const(char)[] x) {
 	return time;
 }
 
+/++ Decode binary protocol value from packet into `MySQLValue` based on column metadata. +/
 MySQLValue eatValue(ref InputPacket packet, ref const MySQLColumn column) {
 	auto signed = (column.flags & FieldFlags.UNSIGNED_FLAG) == 0;
 	final switch (column.type) with (ColumnTypes) {
@@ -962,6 +1070,7 @@ MySQLValue eatValue(ref InputPacket packet, ref const MySQLColumn column) {
 	}
 }
 
+/++ Decode textual protocol value from packet into `MySQLValue` based on column metadata. +/
 MySQLValue eatValueText(ref InputPacket packet, ref const MySQLColumn column) {
 	auto signed = (column.flags & FieldFlags.UNSIGNED_FLAG) == 0;
 	auto svalue = (column.type != ColumnTypes.MYSQL_TYPE_NULL) ? cast(string)(
@@ -1022,6 +1131,7 @@ MySQLValue eatValueText(ref InputPacket packet, ref const MySQLColumn column) {
 	}
 }
 
+/++ Generic `Variant` dispatcher for emitting protocol type bytes only. +/
 void putValueType(T)(ref OutputPacket packet, T value) if (is(Unqual!T == Variant)) {
 	if (!value.hasValue) {
 		putValueType(packet, MySQLValue(null));
@@ -1070,6 +1180,7 @@ void putValueType(T)(ref OutputPacket packet, T value) if (is(Unqual!T == Varian
 	}
 }
 
+/++ Generic `Variant` encoding dispatch for supported runtime value types. +/
 void putValue(T)(ref OutputPacket packet, T value) if (is(Unqual!T == Variant)) {
 	if (!value.hasValue) {
 		putValue(packet, MySQLValue(null));
@@ -1118,26 +1229,31 @@ void putValue(T)(ref OutputPacket packet, T value) if (is(Unqual!T == Variant)) 
 	}
 }
 
+/++ Emit protocol type metadata for datetime-like values. +/
 void putValueType(T)(ref OutputPacket packet, T value)
 if (is(T : Date) || is(T : DateTime) || is(T : SysTime)) {
 	packet.put!ubyte(ColumnTypes.MYSQL_TYPE_TIMESTAMP);
 	packet.put!ubyte(0x80);
 }
 
+/++ Encode `Date`/`DateTime`/`SysTime` datetime values to packet format. +/
 void putValue(T)(ref OutputPacket packet, T value)
 if (is(T : Date) || is(T : DateTime) || is(T : SysTime)) {
 	putMySQLDateTime(packet, MySQLDateTime.from(value));
 }
 
+/++ Emit type marker for duration-like values and write `TIME` metadata. +/
 void putValueType(T)(ref OutputPacket packet, T value) if (is(T : Duration)) {
 	packet.put!ubyte(ColumnTypes.MYSQL_TYPE_TIME);
 	packet.put!ubyte(0x00);
 }
 
+/++ Encode `Duration`/`TimeOfDay` values. +/
 void putValue(T)(ref OutputPacket packet, T value) if (is(T : Duration)) {
 	putMySQLTime(packet, MySQLTime.from(value));
 }
 
+/++ Emit integer type metadata for signed/unsigned integral values. +/
 void putValueType(T)(ref OutputPacket packet, T value) if (__traits(isIntegral, T)) {
 	enum ubyte sign = isUnsigned!T ? 0x80 : 0x00;
 
@@ -1156,6 +1272,7 @@ void putValueType(T)(ref OutputPacket packet, T value) if (__traits(isIntegral, 
 	}
 }
 
+/++ Encode integral values using the smallest available MySQL integer type. +/
 void putValue(T)(ref OutputPacket packet, T value) if (__traits(isIntegral, T)) {
 	static if (T.sizeof == 8) {
 		packet.put!ulong(value);
@@ -1168,6 +1285,7 @@ void putValue(T)(ref OutputPacket packet, T value) if (__traits(isIntegral, T)) 
 	}
 }
 
+/++ Emit floating-point metadata for `float`/`double` values. +/
 void putValueType(T)(ref OutputPacket packet, T value) if (isFloatingPoint!T) {
 	alias UT = Unqual!T;
 
@@ -1182,6 +1300,7 @@ void putValueType(T)(ref OutputPacket packet, T value) if (isFloatingPoint!T) {
 	}
 }
 
+/++ Encode `float`/`double` values in protocol form. +/
 void putValue(T)(ref OutputPacket packet, T value) if (isFloatingPoint!T) {
 	alias UT = Unqual!T;
 
@@ -1192,12 +1311,14 @@ void putValue(T)(ref OutputPacket packet, T value) if (isFloatingPoint!T) {
 	}
 }
 
+/++ Emit string/binary type marker for textual input types. +/
 void putValueType(T)(ref OutputPacket packet, T value)
 if (isSomeString!(OriginalType!T)) {
 	packet.put!ubyte(ColumnTypes.MYSQL_TYPE_STRING);
 	packet.put!ubyte(0x80);
 }
 
+/++ Encode strings with length-encoded payload. +/
 void putValue(T)(ref OutputPacket packet, T value)
 if (isSomeString!(OriginalType!T)) {
 	ulong size = value.length * T.init[0].sizeof;
@@ -1205,36 +1326,42 @@ if (isSomeString!(OriginalType!T)) {
 	packet.put(value);
 }
 
+/++ Encode arrays element-by-element for type metadata. +/
 void putValueType(T)(ref OutputPacket packet, T value)
 if (isArray!T && !isSomeString!(OriginalType!T)) {
 	foreach (ref item; value)
 		putValueType(packet, item);
 }
 
+/++ Encode array elements recursively. +/
 void putValue(T)(ref OutputPacket packet, T value)
 if (isArray!T && !isSomeString!(OriginalType!T)) {
 	foreach (ref item; value)
 		putValue(packet, item);
 }
 
+/++ Emit BLOB metadata for `MySQLBinary` values. +/
 void putValueType(T)(ref OutputPacket packet, T value)
 if (is(Unqual!T == MySQLBinary)) {
 	packet.put!ubyte(ColumnTypes.MYSQL_TYPE_BLOB);
 	packet.put!ubyte(0x80);
 }
 
+/++ Write `MySQLBinary` payload with length encoding. +/
 void putValue(T)(ref OutputPacket packet, T value) if (is(Unqual!T == MySQLBinary)) {
 	ulong size = value.length;
 	packet.putLenEnc(size);
 	packet.put(value.data);
 }
 
+/++ Emit raw `MySQLValue` type/signature before payload serialization. +/
 void putValueType(T)(ref OutputPacket packet, T value)
 if (is(Unqual!T == MySQLValue)) {
 	packet.put!ubyte(value.type_);
 	packet.put!ubyte(value.sign_);
 }
 
+/++ Serialize the concrete `MySQLValue` payload according to its `ColumnTypes`. +/
 void putValue(T)(ref OutputPacket packet, T value) if (is(Unqual!T == MySQLValue)) {
 	final switch (value.type) with (ColumnTypes) {
 	case MYSQL_TYPE_NULL:
@@ -1291,14 +1418,17 @@ void putValue(T)(ref OutputPacket packet, T value) if (is(Unqual!T == MySQLValue
 	}
 }
 
+/++ Emit `NULL` value type metadata. +/
 void putValueType(ref OutputPacket packet, typeof(null)) {
 	packet.put!ubyte(ColumnTypes.MYSQL_TYPE_NULL);
 	packet.put!ubyte(0x00);
 }
 
+/++ Skip writing data for null `VALUE` because metadata already emitted. +/
 void putValue(ref OutputPacket packet, typeof(null)) {
 }
 
+/++ Write nullable wrappers by emitting null marker or wrapped value metadata. +/
 void putValueType(T)(ref OutputPacket packet, T value)
 if (isInstanceOf!(Nullable, T) || isInstanceOf!(NullableRef, T)) {
 	if (value.isNull) {
@@ -1308,6 +1438,7 @@ if (isInstanceOf!(Nullable, T) || isInstanceOf!(NullableRef, T)) {
 	}
 }
 
+/++ Write nullable wrappers by emitting null payload or wrapped value. +/
 void putValue(T)(ref OutputPacket packet, T value)
 if (isInstanceOf!(Nullable, T) || isInstanceOf!(NullableRef, T)) {
 	if (value.isNull) {
