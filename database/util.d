@@ -5,7 +5,6 @@ import core.time,
 	database.sqlbuilder,
 	std.exception,
 	std.meta,
-	std.socket,
 	std.string,
 	std.traits,
 	std.typecons;
@@ -13,7 +12,9 @@ import core.time,
 
 public import database.traits;
 
+/++ Base exception for all database-related errors in this project. +/
 class DBException : Exception {
+	/++ Create a database exception with file and line metadata. +/
 	this(string msg, string file = __FILE__, size_t line = __LINE__) pure @safe {
 		super(msg, file, line);
 	}
@@ -46,6 +47,14 @@ CharClass classify(char ch) pure {
 }
 
 public:
+/++ Convert a string to snake_case.
+
+Params:
+	input = The input string.
+	sep = The separator to insert between words.
+
+Returns: The snake_case representation of the input string.
++/
 S snakeCase(S)(S input, char sep = '_') {
 	if (!input.length)
 		return "";
@@ -71,7 +80,7 @@ S snakeCase(S)(S input, char sep = '_') {
 		}
 		pcls = cls;
 
-		if (length >= buffer.length - 1)
+		if (length >= buffer.length - 1) // @suppress(dscanner.suspicious.length_subtraction)
 			break;
 	}
 	return cast(S)buffer[0 .. length].dup;
@@ -101,6 +110,15 @@ unittest {
 	test("coverImageURL", "cover_image_url");
 }
 
+/++ Convert a string to camelCase.
+
+Params:
+    upper = Whether to capitalize the first character.
+    input = The input string.
+    sep = The separator to treat as a word boundary.
+
+Returns: The camelCase representation of the input string.
++/
 S camelCase(S, bool upper = false)(in S input, char sep = '_') {
 	S output;
 	bool upcaseNext = upper;
@@ -117,10 +135,17 @@ S camelCase(S, bool upper = false)(in S input, char sep = '_') {
 	return output;
 }
 
+/++ Convert a string to PascalCase.
+
+Params:
+    input = The input string.
+    sep = The separator to treat as a word boundary.
+Returns: The PascalCase representation of the input string.
++/
 S pascalCase(S)(in S input, char sep = '_')
 	=> camelCase!(S, true)(input, sep);
 
-unittest {
+@safe unittest {
 	assert("c".camelCase == "c");
 	assert("c".pascalCase == "C");
 	assert("c_a".camelCase == "cA");
@@ -137,25 +162,72 @@ unittest {
 	assert("http_response_code_xyz".pascalCase == "HttpResponseCodeXyz");
 }
 
-S quote(S)(S s, char q = '"') if (isSomeString!S) {
+/++ Quote a string for SQL.
+
+Params:
+	s = The string to quote.
+	q = The quote character to use.
+
+Returns: The quoted SQL string.
++/
+S quote(S)(S s, char q = '\'')
+if (isSomeString!S) {
+	import std.algorithm;
+
 	version (NO_SQLQUOTE)
 		return s;
-	else
+	else {
+		if (s.canFind(q))
+			s = s.replace([q], [q, q]);
 		return q ~ s ~ q;
+	}
+}
+
+@safe unittest {
+	assert("a".quote == `'a'`);
+	assert("a".quote('\'') == `'a'`);
+	assert("a".quote('"') == `"a"`);
+	assert(`a"`.quote('"') == `"a"""`);
+}
+
+version (NO_SQLQUOTE) {
+} else
+	immutable sqlKeywords = {
+	import std.algorithm;
+
+	bool[string] res;
+	foreach (keyword; import("keywords.txt").splitter('\n'))
+		res[keyword] = true;
+	return res;
+}();
+
+S identifier(S)(S s) {
+	import std.string;
+
+	version (NO_SQLQUOTE) {
+	} else {
+		if (s.toUpper in sqlKeywords)
+			return '"' ~ s ~ '"';
+	}
+	return s;
 }
 
 S quoteJoin(S, bool leaveTail = false)(S[] s, char sep = ',', char q = '"')
 if (isSomeString!S) {
 	import std.array;
+	import std.string;
 
 	auto res = appender!S;
 	for (size_t i; i < s.length; i++) {
 		version (NO_SQLQUOTE)
 			res ~= s[i];
 		else {
-			res ~= q;
-			res ~= s[i];
-			res ~= q;
+			if (s[i].toUpper in sqlKeywords) {
+				res ~= q;
+				res ~= s[i];
+				res ~= q;
+			} else
+				res ~= s[i];
 		}
 		if (leaveTail || i + 1 < s.length)
 			res ~= sep;
@@ -163,10 +235,29 @@ if (isSomeString!S) {
 	return res[];
 }
 
-T parse(T)(inout(char)[] data) if (isIntegral!T)
+@safe unittest {
+	assert(quoteJoin!string([]) == "");
+	assert(["a", "b"].quoteJoin == `a,b`);
+	assert(["group", "on"].quoteJoin(',') == `"group","on"`);
+	assert(["group", "on"].quoteJoin(',', '\'') == `'group','on'`);
+}
+
+/++ Parse an integral value from a byte slice.
+
+This is an overload set:
+1. Parse from the beginning of `data`.
+2. Parse from an explicit `startIndex` and advance `data` to the remaining suffix.
+
+Params:
+	data = The byte slice containing ASCII digits to parse.
+Returns: The parsed integral value.
++/
+T parse(T)(inout(char)[] data)
+if (isIntegral!T)
 	=> parse!T(data, 0);
 
-T parse(T)(ref inout(char)[] data, size_t startIndex = 0) if (isIntegral!T)
+T parse(T)(ref inout(char)[] data, size_t startIndex = 0)
+if (isIntegral!T)
 in (startIndex <= data.length) {
 	T x;
 	auto i = startIndex;
@@ -182,19 +273,24 @@ in (startIndex <= data.length) {
 
 package(database):
 
+/++ Convert a C string pointer into an owning D string copy. +/
 auto toStr(T)(T ptr) => fromStringz(ptr).idup;
 
+/++ Packet-reading helpers mixed into packet buffer types. +/
 template InputPacketMethods(E : Exception) {
+	/++ Ensure the next parsed value matches `x`, otherwise throw protocol error. +/
 	void expect(T)(T x) {
 		if (x != eat!T)
 			throw new E("Bad packet format");
 	}
 
+	/++ Skip `count` bytes from the front of the buffer. +/
 	void skip(size_t count)
 	in (count <= buf.length) {
 		buf = buf[count .. $];
 	}
 
+	/++ Search bytes until `x` and return index; optionally enforce presence. +/
 	auto countUntil(ubyte x, bool expect) {
 		auto index = buf.countUntil(x);
 		if (expect && (index < 0 || buf[index] != x))
@@ -202,6 +298,7 @@ template InputPacketMethods(E : Exception) {
 		return index;
 	}
 	// dfmt off
+	/++ Skip a length-encoded MySQL value header and payload length. +/
 	void skipLenEnc() {
 		auto header = eat!ubyte;
 		if (header >= 0xfb) {
@@ -238,12 +335,16 @@ template InputPacketMethods(E : Exception) {
 	}
 	// dfmt on
 
+	/++ Number of unread bytes currently available in the packet buffer. +/
 	auto remaining() const => buf.length;
 
+	/++ True when no unread bytes remain. +/
 	bool empty() const => buf.length == 0;
 }
 
+/++ Packet-writing helpers mixed into packet output buffers. +/
 template OutputPacketMethods() {
+	/++ Write a MySQL length-encoded integer to the output buffer. +/
 	void putLenEnc(ulong x) {
 		if (x < 0xfb) {
 			put(cast(ubyte)x);
@@ -263,8 +364,10 @@ template OutputPacketMethods() {
 		}
 	}
 
+	/++ Current output payload length in bytes. +/
 	size_t length() const => pos;
 
+	/++ True when no bytes have been written yet. +/
 	bool empty() const => pos == 0;
 }
 
@@ -293,58 +396,66 @@ align(1) union _l {
 	ulong n;
 }
 
-class DBSocket(E : Exception) : TcpSocket {
+template DBSocket(E : Exception) {
+	/++ TCP socket wrapper used by database protocol implementations. +/
+	import std.socket;
 	import core.stdc.errno;
+	class DBSocket : TcpSocket {
 
-@safe:
-	this(in char[] host, ushort port) {
-		super(new InternetAddress(host, port));
-		setOption(SocketOptionLevel.SOCKET, SocketOption.KEEPALIVE, true);
-		setOption(SocketOptionLevel.TCP, SocketOption.TCP_NODELAY, true);
-		setOption(SocketOptionLevel.SOCKET, SocketOption.SNDTIMEO, 30.seconds);
-		setOption(SocketOptionLevel.SOCKET, SocketOption.RCVTIMEO, 30.seconds);
-	}
-
-	override void close() scope {
-		shutdown(SocketShutdown.BOTH);
-		super.close();
-	}
-
-	void read(void[] buffer) {
-		long len = void;
-
-		for (size_t i; i < buffer.length; i += len) {
-			len = receive(buffer[i .. $]);
-
-			if (len > 0)
-				continue;
-
-			if (len == 0)
-				throw new E("Server closed the connection");
-
-			if (errno == EINTR || errno == EAGAIN /* || errno == EWOULDBLOCK*/ )
-				len = 0;
-			else
-				throw new E("Received std.socket.Socket.ERROR: " ~ formatSocketError(errno));
+	@safe:
+		/++ Open a TCP socket and configure it for database networking. +/
+		this(in char[] host, ushort port) {
+			super(new InternetAddress(host, port));
+			setOption(SocketOptionLevel.SOCKET, SocketOption.KEEPALIVE, true);
+			setOption(SocketOptionLevel.TCP, SocketOption.TCP_NODELAY, true);
+			setOption(SocketOptionLevel.SOCKET, SocketOption.SNDTIMEO, 30.seconds);
+			setOption(SocketOptionLevel.SOCKET, SocketOption.RCVTIMEO, 30.seconds);
 		}
-	}
 
-	void write(in void[] buffer) {
-		long len = void;
+		/++ Close socket and disable further I/O operations. +/
+		override void close() scope {
+			shutdown(SocketShutdown.BOTH);
+			super.close();
+		}
 
-		for (size_t i; i < buffer.length; i += len) {
-			len = send(buffer[i .. $]);
+		/++ Read data until the provided buffer is fully filled. +/
+		void read(void[] buffer) {
+			long len = void;
 
-			if (len > 0)
-				continue;
+			for (size_t i; i < buffer.length; i += len) {
+				len = receive(buffer[i .. $]);
 
-			if (len == 0)
-				throw new E("Server closed the connection");
+				if (len > 0)
+					continue;
 
-			if (errno == EINTR || errno == EAGAIN /* || errno == EWOULDBLOCK*/ )
-				len = 0;
-			else
-				throw new E("Sent std.socket.Socket.ERROR: " ~ formatSocketError(errno));
+				if (len == 0)
+					throw new E("Server closed the connection");
+
+				if (errno == EINTR || errno == EAGAIN /* || errno == EWOULDBLOCK*/ )
+					len = 0;
+				else
+					throw new E("Received Socket ERROR: " ~ formatSocketError(errno));
+			}
+		}
+
+		/++ Write all bytes in the provided buffer, handling transient retry errors. +/
+		void write(in void[] buffer) {
+			long len = void;
+
+			for (size_t i; i < buffer.length; i += len) {
+				len = send(buffer[i .. $]);
+
+				if (len > 0)
+					continue;
+
+				if (len == 0)
+					throw new E("Server closed the connection");
+
+				if (errno == EINTR || errno == EAGAIN /* || errno == EWOULDBLOCK*/ )
+					len = 0;
+				else
+					throw new E("Sent Socket ERROR: " ~ formatSocketError(errno));
+			}
 		}
 	}
 }
