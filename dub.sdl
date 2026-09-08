@@ -32,7 +32,7 @@ subPackage {
 	name "sqlite"
 	description "Lightweight SQLite3 driver"
 	dependency "database:util" path="."
-	libs "sqlite3"
+	libs "sqlite3" platform="posix"
 	sourcePaths "database/sqlite"
 	importPaths "."
 	versions "DB_SQLite"
