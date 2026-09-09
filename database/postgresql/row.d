@@ -4,6 +4,7 @@ import database.postgresql.exception;
 import database.postgresql.type;
 public import database.row;
 
+/++ PostgreSQL row adapter built on shared `Row` container utilities. +/
 alias PgSQLRow = Row!(PgSQLValue, PgSQLHeader, PgSQLErrorException, hashOf, Mixin);
 
 private template Mixin() {

@@ -5,6 +5,7 @@ import std.datetime;
 //dfmt off
 
 //https://www.postgresql.org/docs/14/static/protocol-message-formats.html
+/++ Message type byte sent by client to PostgreSQL in the output protocol stream. +/
 enum OutputMessageType : ubyte {
 	Bind			= 'B',
 	Close			= 'C',
@@ -22,6 +23,7 @@ enum OutputMessageType : ubyte {
 	Terminate		= 'X'
 }
 
+/++ Message type byte received from PostgreSQL in the input protocol stream. +/
 enum InputMessageType : ubyte {
 	Authentication		= 'R',
 	BackendKeyData		= 'K',
@@ -48,23 +50,27 @@ enum InputMessageType : ubyte {
 	RowDescription		= 'T'
 }
 
+/++ Extended query transaction status flag reported by PostgreSQL. +/
 enum TransactionStatus : ubyte {
 	Idle = 'I',
 	Inside = 'T',
 	Error = 'E',
 }
 
+/++ Identifies whether a PostgreSQL command refers to a statement or a portal. +/
 enum DescribeType : ubyte {
 	Statement = 'S',
 	Portal = 'P'
 }
 
+/++ Binary/text data layout code used in Bind/RowDescription messages. +/
 enum FormatCode : short {
 	Text,
 	Binary
 }
 
 // https://www.postgresql.org/docs/14/static/protocol-error-fields.html
+/++ Error-field identifier used in PostgreSQL notice/error responses. +/
 enum NoticeMessageField : ubyte {
 	SeverityLocal		= 'S',
 	Severity			= 'V',
@@ -87,6 +93,7 @@ enum NoticeMessageField : ubyte {
 }
 
 // https://github.com/postgres/postgres/blob/master/src/include/catalog/pg_type.dat
+/++ OID-backed PostgreSQL type identifiers used by parameter and row encoding. +/
 enum PgType : uint {
 	NULL		= 0,
 	BOOL		= 16,
@@ -165,11 +172,13 @@ enum PgType : uint {
 
 alias PgColumnTypes = PgType;
 
+/++ PostgreSQL epoch reference date used for date conversions. +/
 enum PGEpochDate = Date(2000, 1, 1);
 enum PGEpochDay = PGEpochDate.dayOfGregorianCal;
 enum PGEpochTime = TimeOfDay(0, 0, 0);
 enum PGEpochDateTime = DateTime(2000, 1, 1, 0, 0, 0);
 
+/++ Map a `PgType` code to a human-readable SQL type name. +/
 auto columnTypeName(PgType type) {
 	import std.traits;
 
@@ -184,14 +193,15 @@ auto columnTypeName(PgType type) {
 }
 
 struct Notification {
-	/// The process ID of the notifying backend process
+	/++ Process ID of the backend that emitted the notification. +/
 	int processId;
-	/// The name of the channel that the notify has been raised on
+	/++ Notification channel name. +/
 	char[] channel;
-	/// The “payload” string passed from the notifying process
+	/++ Notification message payload. +/
 	char[] payload;
 }
 
+/++ PostgreSQL notice/error information sent by the server. +/
 struct Notice {
 	enum Severity : ubyte {
 		ERROR = 1,
@@ -204,52 +214,39 @@ struct Notice {
 		LOG,
 	}
 
+	/++ Severity of the notice or error response. +/
 	Severity severity;
-	/// https://www.postgresql.org/docs/14/static/errcodes-appendix.html
+	/++ SQL error code from `SQLSTATE` (or empty if not available). +/
 	char[5] code;
-	/// Primary human-readable error message. This should be accurate
-	/// but terse (typically one line). Always present.
+	/++ Primary human-readable error message; usually one concise line. +/
 	string message;
-	/// Optional secondary error message carrying more detail about the
-	/// problem. Might run to multiple lines.
+	/++ Optional secondary detail message with additional context. +/
 	string detail;
-	/** Optional suggestion what to do about the problem. This is intended to
-	differ from Detail in that it offers advice (potentially inappropriate)
-	rather than hard facts. Might run to multiple lines. */
+	/++ Optional suggestion about what to do about the problem. +/
 	string hint;
-	/** Decimal ASCII integer, indicating an error cursor position as an index
-	into the original query string. The first character has index 1, and
-	positions are measured in characters not bytes. */
+	/++ Decimal ASCII integer cursor position in the query string. +/
 	uint position;
-	/** this is defined the same as the position field, but it is used when
-	the cursor position refers to an internally generated command rather than
-	the one submitted by the client. The q field will always appear when this
-	field appears.*/
+	/++ Cursor position for internally generated commands, if available. +/
 	string internalPos;
-	/// Text of a failed internally-generated command. This could be, for
-	/// example, a SQL query issued by a PL/pgSQL function.
+	/++ Text of a failed internally-generated command. +/
 	string internalQuery;
-	/** Context in which the error occurred. Presently this includes a call
-	stack traceback of active procedural language functions and
-	internally-generated queries. The trace is one entry per line, most
-	recent first. */
+	/++ Context where the error occurred, including routine stack trace. +/
 	string where;
+	/++ Database schema referenced by the notice/error, if applicable. +/
 	string schema;
+	/++ Database table referenced by the notice/error, if applicable. +/
 	string table;
+	/++ Database column referenced by the notice/error, if applicable. +/
 	string column;
-	/// If the error was associated with a specific data type, the name of
-	/// the data type.
+	/++ Name of the related SQL type, if any. +/
 	string type;
-	/** If the error was associated with a specific constraint, the name of the
-	constraint. Refer to fields listed above for the associated table or domain.
-	(For this purpose, indexes are treated as constraints, even if they weren't
-	created with constraint syntax.) */
+	/++ Constraint name related to the error, if applicable. +/
 	string constraint;
-	/// File name of the source-code location where the error was reported.
+	/++ Source file name where the error was reported. +/
 	string file;
-	/// Line number of the source-code location where the error was reported.
+	/++ Source line number where the error was reported. +/
 	string line;
-	/// Name of the source-code routine reporting the error.
+	/++ Routine name that reported the error. +/
 	string routine;
 
 	string toString() @safe const {

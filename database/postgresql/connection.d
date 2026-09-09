@@ -9,14 +9,16 @@ database.util;
 
 alias Socket = DBSocket!PgSQLConnectionException;
 
+/++ Runtime state captured from the server for the most recent command. +/
 struct Status {
 	bool ready;
 	TransactionStatus transaction = TransactionStatus.Idle;
 
-	ulong affected, insertID;
+	ulong affected, insertId;
 }
 
 // dfmt off
+/++ Connection settings passed to `Connection` on startup. +/
 struct Settings {
 	string
 		host,
@@ -50,38 +52,51 @@ class Connection {
 
 	Socket socket;
 
+	/++ Construct a PostgreSQL connection from a prepared `Settings` value. +/
 	this(Settings settings) {
 		settings_ = settings;
 		connect();
 	}
 
+	/++ Construct a PostgreSQL connection from primitive connection parameters. +/
 	this(string host, string user, string pwd, string db, ushort port = 5432) {
 		this(Settings(host, user, pwd, db, port));
 	}
 
+	/++ Send a lightweight protocol-level ping request (currently no-op). +/
 	void ping() {
 	}
 
+	/++ Callback invoked when the socket is disconnected unexpectedly. +/
 	alias OnDisconnectCallback = void delegate();
 
 	@property final {
+		/++ Whether the connection is currently inside an open transaction block. +/
 		bool inTransaction() const => connected && status_.transaction == TransactionStatus.Inside;
 
-		ulong insertID() const nothrow @nogc => status_.insertID;
+		/++ Last inserted identity value, if available. +/
+		ulong insertId() const nothrow @nogc => status_.insertId;
 
+		/++ Rows affected by the last command, if reported by PostgreSQL. +/
 		ulong affected() const nothrow @nogc => status_.affected;
 
+		/++ Whether the backend reported `ReadyForQuery` after latest command. +/
 		bool ready() const nothrow @nogc => status_.ready;
 
+		/++ Whether the underlying socket exists and is alive. +/
 		bool connected() const => socket && socket.isAlive;
 
+		/++ Current effective connection settings. +/
 		auto settings() const => settings_;
 
+		/++ Collected server notices from the last command cycle. +/
 		auto notices() const => notices_;
 
+		/++ Collected asynchronous notifications received from the server. +/
 		auto notifications() const => notifications_;
 	}
 
+	/++ Execute SQL that returns a result set and return a `QueryResult` cursor. +/
 	auto runSql(T = PgSQLRow)(in char[] sql) @trusted {
 		ensureConnected();
 
@@ -92,7 +107,8 @@ class Connection {
 		return QueryResult!T(this);
 	}
 
-	auto query(T = PgSQLRow, Args...)(in char[] sql, auto ref Args args) {
+	/++ Execute a parameterized SQL statement and return its first result cursor. +/
+	auto query(T = PgSQLRow, Args...)(in char[] sql, Args args) {
 		prepare!Args("", sql);
 		bind("", "", forward!args);
 		flush();
@@ -102,7 +118,8 @@ class Connection {
 		return QueryResult!T(this, FormatCode.Binary);
 	}
 
-	ulong exec(Args...)(in char[] sql, auto ref Args args) {
+	/++ Execute a parameterized SQL statement and return affected-row count. +/
+	ulong exec(Args...)(in char[] sql, Args args) {
 		prepare!Args("", sql);
 		bind("", "", forward!args);
 		flush();
@@ -112,6 +129,7 @@ class Connection {
 		return affected;
 	}
 
+	/++ Prepare a server-side statement with the given SQL and type vector. +/
 	void prepare(Args...)(in char[] statement, in char[] sql)@trusted
 	if (Args.length <= short.max) {
 		if (statement.length > 255)
@@ -132,7 +150,8 @@ class Connection {
 		socket.write(op.data);
 	}
 
-	void bind(Args...)(in char[] portal, in char[] statement, auto ref Args args) @trusted
+	/++ Bind arguments to a prepared statement or portal and stage execution params. +/
+	void bind(Args...)(in char[] portal, in char[] statement, Args args) @trusted
 	if (Args.length <= short.max) {
 		auto len = 5 +
 			portal.length + 1 +
@@ -175,6 +194,7 @@ class Connection {
 		socket.write(op.data);
 	}
 
+	/++ Describe a statement or portal before execution. +/
 	void describe(in char[] name = "", DescribeType type = DescribeType.Statement) @trusted {
 		auto len = 5 + 1 + name.length + 1;
 		mixin Output!(len, OMT.Describe);
@@ -183,22 +203,26 @@ class Connection {
 		socket.write(op.data);
 	}
 
+	/++ Flush buffered protocol messages without waiting for responses. +/
 	void flush() {
 		enum ubyte[5] buf = [OMT.Flush, 0, 0, 0, 4];
 		socket.write(buf);
 	}
 
+	/++ Send a Sync message to request protocol synchronization. +/
 	void sync() {
 		enum ubyte[5] buf = [OMT.Sync, 0, 0, 0, 4];
 		socket.write(buf);
 	}
 
+	/++ Execute a prepared portal and wait for completion, optionally with row limit. +/
 	ulong executePortal(string portal = "", int rowLimit = 0) {
 		sendExecute(portal, rowLimit);
 		eatStatuses();
 		return affected;
 	}
 
+	/++ Send a backend cancellation request for the current process session. +/
 	void cancel(uint processId, uint cancellationKey) @trusted {
 		ubyte[16] buf = [16, 0, 0, 0, 4, 210, 22, 46, 0, 0, 0, 0, 0, 0, 0, 0];
 		*cast(uint*)&buf[8] = native(processId);
@@ -206,6 +230,7 @@ class Connection {
 		socket.write(buf);
 	}
 
+	/++ Request close of a named statement/portal and consume CloseComplete. +/
 	void close(DescribeType type, in char[] name = "") @trusted {
 		auto len = 5 + 1 + name.length + 1;
 		mixin Output!(len, OMT.Close);
@@ -216,6 +241,7 @@ class Connection {
 		eatStatuses(IMT.CloseComplete);
 	}
 
+	/++ Start a transaction (`BEGIN`) and return transaction state. +/
 	bool begin() {
 		if (inTransaction)
 			throw new PgSQLErrorException(
@@ -226,6 +252,7 @@ class Connection {
 		return inTransaction;
 	}
 
+	/++ Commit current transaction and clear transaction state. +/
 	bool commit() {
 		if (!inTransaction)
 			throw new PgSQLErrorException("No active transaction");
@@ -234,6 +261,7 @@ class Connection {
 		return !inTransaction;
 	}
 
+	/++ Roll back current transaction and clear transaction state. +/
 	bool rollback() {
 		if (!inTransaction)
 			throw new PgSQLErrorException("No active transaction");
@@ -242,6 +270,7 @@ class Connection {
 		return !inTransaction;
 	}
 
+	/++ Close the connection and optionally send protocol terminate message. +/
 	void close(bool sendTerminate = true) nothrow {
 		scope (exit) {
 			socket.close();
@@ -255,6 +284,7 @@ class Connection {
 			}
 	}
 
+	/++ Re-initialize connection state for reuse from the pool. +/
 	void reuse() {
 		onDisconnect = null;
 		ensureConnected();
@@ -265,16 +295,20 @@ class Connection {
 
 package(database):
 
+	/++ Indicates whether the connection is currently leased by pool. +/
 	bool busy, pooled;
+	/++ Timestamp when the connection was released back to the pool. +/
 	DateTime releaseTime;
 
 private:
+	/++ Close the transport and invoke disconnect callback if configured. +/
 	void disconnect() {
 		close(false);
 		if (onDisconnect)
 			onDisconnect();
 	}
 
+	/++ Open socket, send startup packet, and complete authentication exchange. +/
 	void connect() @trusted {
 		socket = new Socket(settings_.host, settings_.port);
 
@@ -299,6 +333,7 @@ private:
 		eatStatuses();
 	}
 
+	/++ Build and send an Execute message for a prepared portal. +/
 	void sendExecute(string portal = "", int rowLimit = 0) @trusted {
 		auto len = 5 + portal.length + 1 + 4;
 		mixin Output!(len, OMT.Execute);
@@ -308,11 +343,13 @@ private:
 		sync();
 	}
 
+	/++ Open a new connection when the current socket is not connected. +/
 	void ensureConnected() {
 		if (!connected)
 			connect();
 	}
 
+	/++ Read a length-prefixed message with a known message-type control byte. +/
 	InputPacket retrieve(ubyte control) @trusted {
 		scope (failure)
 			disconnect();
@@ -330,6 +367,7 @@ private:
 		return InputPacket(control, buf);
 	}
 
+	/++ Read the next message packet from the socket using its protocol header. +/
 	package InputPacket retrieve() @trusted {
 		scope (failure)
 			disconnect();
@@ -347,6 +385,7 @@ private:
 		return InputPacket(header[0], buf);
 	}
 
+	/++ Consume and process all server messages until `ReadyForQuery`. +/
 	package void eatStatuses() @trusted {
 		InputPacket packet = void;
 		do
@@ -354,6 +393,7 @@ private:
 		while (eatStatus(packet) != IMT.ReadyForQuery);
 	}
 
+	/++ Consume messages until a specific message type is seen (or ReadyForQuery). +/
 	package auto eatStatuses(IMT type, bool syncOnError = false) @trusted {
 		InputPacket packet = void;
 		do {
@@ -365,6 +405,7 @@ private:
 		return packet;
 	}
 
+	/++ Process one authentication exchange message, including password auth flow. +/
 	bool eatAuth() @trusted {
 		import std.algorithm : max;
 
@@ -428,6 +469,7 @@ private:
 		return true;
 	}
 
+	/++ Read and cache server parameter status key/value pairs. +/
 	void eatParameterStatus(ref InputPacket packet)
 	in (packet.type == IMT.ParameterStatus)
 	out (; packet.empty) {
@@ -445,12 +487,14 @@ private:
 		// dfmt on
 	}
 
+	/++ Cache backend process id and cancellation key. +/
 	void eatBackendKeyData(InputPacket packet)
 	in (packet.type == IMT.BackendKeyData) {
 		server.processId = packet.eat!uint;
 		server.cancellationKey = packet.eat!uint;
 	}
 
+	/++ Decode a NoticeResponse or ErrorResponse into `Notice` and store it. +/
 	void eatNoticeResponse(ref InputPacket packet)
 	in (packet.type == IMT.NoticeResponse || packet.type == IMT
 		.ErrorResponse) {
@@ -498,11 +542,13 @@ private:
 		notices_ ~= notice;
 	}
 
+	/++ Decode an asynchronous notification into `notifications_`. +/
 	void eatNotification(ref InputPacket packet)
 	in (packet.type == IMT.NotificationResponse) {
 		notifications_ ~= Notification(packet.eat!int, packet.eatz(), packet.eatz());
 	}
 
+	/++ Parse command completion tag and update status counters. +/
 	void eatCommandComplete(ref InputPacket packet)
 	in (packet.type == IMT.CommandComplete) {
 		import std.algorithm : swap;
@@ -517,22 +563,23 @@ private:
 
 		switch (hashOf(cmd)) {
 		case hashOf("INSERT"):
-			status_.insertID = tag.parse!ulong;
+			status_.insertId = tag.parse!ulong;
 			status_.affected = tag.parse!ulong(1);
 			break;
 		case hashOf("SELECT"), hashOf("DELETE"), hashOf("UPDATE"),
 			hashOf("MOVE"), hashOf("FETCH"), hashOf("COPY"):
-			status_.insertID = 0;
+			status_.insertId = 0;
 			status_.affected = tag.parse!ulong;
 			break;
 		case hashOf("CREATE"), hashOf("DROP"):
-			status_.insertID = 0;
+			status_.insertId = 0;
 			status_.affected = 0;
 			break;
 		default:
 		}
 	}
 
+	/++ Handle one server status packet and dispatch to specific state updates. +/
 	auto eatStatus(ref InputPacket packet, bool syncOnError = false) {
 		IMT type = cast(IMT)packet.type;
 		switch (type) with (IMT) {
@@ -567,6 +614,7 @@ private:
 		return type;
 	}
 
+	/++ Raise the latest server error as `PgSQLErrorException`. +/
 	noreturn throwErr() {
 		foreach (ref notice; notices_) switch (notice.severity) with (Notice.Severity) {
 		case PANIC, ERROR, FATAL:

@@ -5,24 +5,32 @@ database.postgresql.packet,
 database.postgresql.protocol,
 database.postgresql.row,
 database.postgresql.type,
+database.traits,
 std.traits;
 public import database.sqlbuilder;
-import std.utf;
+import std.utf,
+std.conv : to;
 
 @safe:
 
+/++ PostgreSQL database wrapper for typed CRUD and query operations. +/
 struct PgSQLDB {
 	Connection conn;
 	alias conn this;
 
+	/++ Create a wrapper using a prepared `Settings` object. +/
 	this(Settings settings) {
 		conn = new Connection(settings);
 	}
 
+	/++ Create a wrapper and connect with explicit connection parameters. +/
 	this(string host, string user, string pwd, string db, ushort port = 5432) {
 		conn = new Connection(host, user, pwd, db, port);
 	}
 
+	/++ Create tables for one or more aggregate types.
+
+	Builds SQL from metadata and executes it immediately. +/
 	bool create(Tables...)() if (Tables.length) {
 		import std.array, std.meta;
 
@@ -35,52 +43,67 @@ struct PgSQLDB {
 		return true;
 	}
 
-	ulong insert(OR or = OR.None, T)(T s) if (isAggregateType!T) {
-		mixin getSQLFields!(or ~ "INTO " ~ quote(SQLName!T) ~ '(',
-			")VALUES(" ~ placeholders(ColumnCount!T) ~ ')', T);
+	/++ Insert an aggregate row into its mapped table.
 
+	The `or`/`filter` arguments control insert modifiers and column selection.
+	`T` must be an aggregate type. +/
+	ulong insert(OR or = OR.None, alias filter = skipRowid, T)(T s) if (isAggregateType!T) {
+		mixin getSQLFields!(or ~ "INTO " ~ identifier(SQLName!T) ~ '(',
+			")VALUES(" ~ placeholders(ColumnCount!T) ~ ')', filter, T);
+		enum colNames = ColumnNames!T;
 		enum sql = SB(sql!colNames, State.insert);
 		return exec(sql, s.tupleof);
 	}
 
+	/++ Insert one row using `ON CONFLICT REPLACE` semantics. +/
 	ulong replaceInto(T)(T s) => insert!(OR.Replace, T)(s);
 
-	auto selectAllWhere(T, string expr, A...)(auto ref A args) if (expr.length)
+	/++ Build a typed query for rows matching a SQL expression. +/
+	auto selectAllWhere(T, string expr, A...)(A args) if (expr.length)
 		=> this.query!T(SB.selectAllFrom!T.where(expr), args);
 
-	T selectOneWhere(T, string expr, A...)(auto ref A args) if (expr.length) {
+	/++ Select one row by expression.
+
+	The first overload throws `PgSQLException` when the result set is empty;
+	the second overload returns `defValue` when empty. +/
+	T selectOneWhere(T, string expr, A...)(A args) if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
 		if (q.empty)
 			throw new PgSQLException("No match");
 		return q.get!T;
 	}
 
-	T selectOneWhere(T, string expr, T defValue, A...)(auto ref A args)
+	T selectOneWhere(T, string expr, T defValue, A...)(A args)
 	if (expr.length) {
 		auto q = query(SB.selectAllFrom!T.where(expr), args);
 		return q ? q.get!T : defValue;
 	}
 
+	/++ Check if a table exists by name. +/
 	bool hasTable(string table)
 		=> !query("select 1 from pg_class where relname = $1", table).empty;
 
+	/++ Check if a mapped type's table exists. +/
 	bool hasTable(T)() if (isAggregateType!T) {
-		enum sql = "select 1 from pg_class where relname = " ~ quote(SQLName!T);
+		enum sql = "select 1 from pg_class where relname = " ~ identifier(SQLName!T);
 		return !query(sql).empty;
 	}
 
-	long delWhere(T, string expr, A...)(auto ref A args) if (expr.length) {
+	/++ Delete rows matching an expression and return affected row count. +/
+	long delWhere(T, string expr, A...)(A args) if (expr.length) {
 		enum sql = SB.del!T.where(expr);
 		return exec(sql, args);
 	}
 }
 
+/++ Typed iterator over PostgreSQL rows returned by a query. +/
 struct QueryResult(T = PgSQLRow) {
 	Connection connection;
 	alias connection this;
 	PgSQLRow row;
 	@disable this();
 
+	/++ Construct a result reader from a connection and optional default format. +/
 	this(Connection conn, FormatCode format = FormatCode.Text) {
 		connection = conn;
 		auto packet = eatStatuses(InputMessageType.RowDescription);
@@ -95,18 +118,23 @@ struct QueryResult(T = PgSQLRow) {
 		popFront();
 	}
 
+	/++ Flush pending packets when the result is disposed. +/
 	~this() {
 		clear();
 	}
 
 	@property pure nothrow @nogc {
+		/++ Whether the current row buffer is empty. +/
 		bool empty() const => row.values.length == 0;
 
+		/++ Column header metadata for the current result set. +/
 		PgSQLHeader header() => row.header;
 
+		/++ Allow `if (result)` checks; true when at least one row is available. +/
 		T opCast(T : bool)() const => !empty;
 	}
 
+	/++ Advance to next row and decode all column values into `row`. +/
 	void popFront() {
 		auto packet = eatStatuses(InputMessageType.DataRow);
 		if (packet.type == InputMessageType.ReadyForQuery) {
@@ -119,9 +147,10 @@ struct QueryResult(T = PgSQLRow) {
 				row[i] = eatValue(packet, column);
 			else
 				row[i] = PgSQLValue(null);
-		assert(packet.empty);
+		assert(packet.empty, "Expected packet to be fully consumed, but " ~ packet.remaining.to!string ~ " bytes remain");
 	}
 
+	/++ Return current row payload as `T` for range front semantics. +/
 	T front() {
 		static if (is(Unqual!T == PgSQLRow))
 			return row;
@@ -129,6 +158,7 @@ struct QueryResult(T = PgSQLRow) {
 			return get();
 	}
 
+	/++ Convert current row to `U`; defaults to template parameter `T`. +/
 	U get(U = T)() {
 		static if (isAggregateType!U)
 			return row.get!U;
@@ -136,6 +166,7 @@ struct QueryResult(T = PgSQLRow) {
 			return row[0].get!U;
 	}
 
+	/++ Read current row as `U` without raising conversion on missing/null cases where possible. +/
 	U peek(U = T)() {
 		static if (isAggregateType!U)
 			return row.get!U;
@@ -143,6 +174,7 @@ struct QueryResult(T = PgSQLRow) {
 			return row[0].peek!U;
 	}
 
+	/++ Consume remaining results and reset row buffer state. +/
 	void clear() {
 		if (!empty && !connection.ready) {
 			eatStatuses();
@@ -154,6 +186,7 @@ struct QueryResult(T = PgSQLRow) {
 private:
 alias SB = SQLBuilder;
 
+/++ Decode one PostgreSQL column value from a wire packet into `PgSQLValue`. +/
 PgSQLValue eatValue(ref InputPacket packet, in PgSQLColumn column) {
 	import std.array;
 	import std.conv : to;
@@ -240,6 +273,7 @@ PgSQLValue eatValue(ref InputPacket packet, in PgSQLColumn column) {
 	throw new PgSQLErrorException("Unsupported type " ~ column.type.columnTypeName);
 }
 
+/++ Convert a hex digit character (`0`-`9`, `a`-`f`, `A`-`F`) into its numeric value. +/
 uint hexDecode(char c) @nogc pure nothrow
 	=> c + 9 * (c >> 6) & 15;
 

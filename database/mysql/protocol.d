@@ -1,5 +1,6 @@
 module database.mysql.protocol;
 
+/++ Client capability flags exchanged during protocol handshakes. +/
 enum CapabilityFlags : uint
 {
 	CLIENT_LONG_PASSWORD                  = 0x00000001,  // Use the improved version of Old Password Authentication
@@ -29,6 +30,7 @@ enum CapabilityFlags : uint
 	CLIENT_DEPRECATE_EOF                  = 0x01000000,  // Can send OK after a Text Resultset
 }
 
+/++ Server status flags received in responses. +/
 enum StatusFlags : ushort
 {
 	SERVER_STATUS_IN_TRANS              = 0x0001,  // A transaction is active
@@ -47,6 +49,7 @@ enum StatusFlags : ushort
 	SERVER_SESSION_STATE_CHANGED        = 0x4000,  // connection state information has changed
 }
 
+/++ Session state payload types for `CLIENT_SESSION_TRACK`. +/
 enum SessionStateType : ubyte
 {
 	SESSION_TRACK_SYSTEM_VARIABLES,
@@ -57,6 +60,7 @@ enum SessionStateType : ubyte
 	SESSION_TRACK_TRANSACTION_STATE
 }
 
+/++ Packet type bytes for server status/error packets. +/
 enum StatusPackets : ubyte
 {
 	OK_Packet   = 0,
@@ -64,6 +68,7 @@ enum StatusPackets : ubyte
 	EOF_Packet  = 0xfe,
 }
 
+/++ MySQL command packet types. +/
 enum Commands : ubyte
 {
 	//COM_SLEEP           = 0x00,
@@ -100,6 +105,7 @@ enum Commands : ubyte
 	COM_RESET_CONNECTION = 0x1f,
 }
 
+/++ Cursor flag values for prepared statement execution. +/
 enum Cursors : ubyte
 {
 	CURSOR_TYPE_NO_CURSOR   = 0x00,
@@ -108,6 +114,7 @@ enum Cursors : ubyte
 	CURSOR_TYPE_SCROLLABLE  = 0x04,
 }
 
+/++ MySQL column type identifiers used in binary protocol payloads. +/
 enum ColumnTypes : ubyte
 {
 	MYSQL_TYPE_DECIMAL      = 0x00,
@@ -143,6 +150,7 @@ enum ColumnTypes : ubyte
 	MYSQL_TYPE_GEOMETRY     = 0xff,
 }
 
+/++ Convert a column type identifier into a SQL type name. +/
 auto columnTypeName(ColumnTypes type)
 {
 	final switch (type) with (ColumnTypes)
@@ -181,6 +189,7 @@ auto columnTypeName(ColumnTypes type)
 	}
 }
 
+/++ Field metadata flags used in column descriptors. +/
 enum FieldFlags : ushort
 {
 	NOT_NULL_FLAG           = 0x0001, //  Field cannot be NULL
@@ -201,6 +210,7 @@ enum FieldFlags : ushort
 	NUM_FLAG                = 0x8000, //  Field is numeric
 }
 
+/++ A subset of common server error codes used by this driver. +/
 enum ErrorCodes : ushort
 {
 	ER_DUP_KEYNAME                  = 1061,

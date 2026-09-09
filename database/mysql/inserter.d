@@ -22,6 +22,7 @@ private {
 	enum quote = '`';
 }
 
+/++ Action keywords for insert conflict handling. +/
 enum OnDuplicate {
 	ignore = "insert ignore into ",
 	fail = "insert into ",
@@ -29,24 +30,39 @@ enum OnDuplicate {
 	updateAll = "UpdateAll"
 }
 
+/++ Create an inserter with default `insert` behavior. +/
 auto inserter(Connection connection) => Inserter(connection);
 
+/++ Create and initialize an inserter for a specific table.
+
+Params:
+	action = Conflict handling strategy.
+	tableName = Target table.
+	columns = Column list.
++/
 auto inserter(Args...)(Connection connection, OnDuplicate action, string tableName, Args columns) {
 	auto insert = Inserter(connection);
 	insert.start(action, tableName, columns);
 	return insert;
 }
 
+/++ Create and initialize an inserter with default `insert into` action. +/
 auto inserter(Args...)(Connection connection, string tableName, Args columns) {
 	auto insert = Inserter(connection);
 	insert.start(OnDuplicate.fail, tableName, columns);
 	return insert;
 }
 
+/++ Builds and executes batched MySQL `INSERT` statements.
+
+This helper is optimized for high-throughput writes by buffering many rows and
+flushing them as multi-values inserts.
++/
 struct Inserter {
 	@disable this();
 	@disable this(this);
 
+	/++ Create inserter bound to a connection. +/
 	this(Connection connection)
 	in (connection) {
 		conn = connection;
@@ -54,15 +70,22 @@ struct Inserter {
 		flushes_ = 0;
 	}
 
+	/++ Flush buffered data on destruction. +/
 	~this() {
 		flush();
 	}
 
+	/++ Start an insert with default `insert into` behavior. +/
 	void start(Args...)(string tableName, Args fieldNames)
 	if (allStringOrStringArray!Args) {
 		start(OnDuplicate.fail, tableName, fieldNames);
 	}
 
+	/++ Initialize SQL for buffered insert.
+
+	`action` controls conflict behavior, `tableName` the target table and
+	`fieldNames` the target columns.
+	+/
 	void start(Args...)(OnDuplicate action, string tableName, Args fieldNames)
 	if (allStringOrStringArray!Args) {
 		auto fieldCount = fieldNames.length;
@@ -143,11 +166,13 @@ struct Inserter {
 		start_ = app[];
 	}
 
+	/++ Override the `ON DUPLICATE KEY UPDATE` expression and return this inserter. +/
 	auto ref duplicateUpdate(string update) {
 		dupUpdate = cast(char[])update;
 		return this;
 	}
 
+	/++ Add multiple aggregate rows at once. +/
 	void rows(T)(ref const T[] param) if (!isValueType!T) {
 		foreach (ref p; param)
 			row(p);
@@ -172,6 +197,7 @@ struct Inserter {
 		return false;
 	}
 
+	/++ Add one aggregate row by member reflection. +/
 	void row(T)(ref const T param) if (!isValueType!T) {
 		scope (failure)
 			reset();
@@ -207,6 +233,7 @@ struct Inserter {
 		++rows_;
 	}
 
+	/++ Add one row from positional value list (all values must be value types). +/
 	void row(Values...)(Values values) if (allSatisfy!(isValueType, Values)) {
 		scope (failure)
 			reset();
@@ -246,13 +273,17 @@ struct Inserter {
 	}
 
 	@property {
+		/++ Number of rows currently buffered. +/
 		size_t rows() const => rows_ != 0;
 
+		/++ Whether any row is pending in the current batch. +/
 		size_t pending() const => pending_ != 0;
 
+		/++ Number of successful flush operations. +/
 		size_t flushes() const => flushes_;
 	}
 
+	/++ Send buffered rows to server and clear the in-memory batch. +/
 	void flush() {
 		if (pending_) {
 			if (dupUpdate.length) {
@@ -289,6 +320,10 @@ private:
 }
 
 @property {
+	/++ Build a parenthesized placeholder list for batch inserts.
+
+	If `parens` is false, this returns a raw comma-separated list.
+	+/
 	string placeholders(size_t x, bool parens = true) {
 		import std.array;
 
@@ -313,7 +348,8 @@ private:
 		return app[];
 	}
 
+	/++ Build a placeholder list from something with a `length` member. +/
 	string placeholders(T)(T x, bool parens = true)
-	if (is(typeof(() { auto y = x.length; })))
+	if (is(typeof(() { size_t y = x.length; })))
 		=> x.length.placeholders(parens);
 }

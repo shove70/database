@@ -12,6 +12,7 @@ package import database.postgresql.exception;
 
 @safe @nogc:
 
+/++ Input packet wrapper for PostgreSQL protocol responses and raw fields. +/
 struct InputPacket {
 	@disable this();
 	@disable this(this);
@@ -53,12 +54,13 @@ struct InputPacket {
 	}
 
 	T eat(T : U[], U)(size_t count) @trusted {
-		assert(U.sizeof * count <= buf.length);
+		assert(U.sizeof * count <= buf.length, "Packet underflow");
 		auto ptr = cast(U*)buf.ptr;
 		buf = buf[U.sizeof * count .. $];
 		return ptr[0 .. count];
 	}
 
+	/++ Decode helpers for protocol primitives from the packet body. +/
 	mixin InputPacketMethods!PgSQLProtocolException;
 
 private:
@@ -66,6 +68,7 @@ private:
 	ubyte typ;
 }
 
+/++ Output packet builder for encoding PostgreSQL protocol requests. +/
 struct OutputPacket {
 	@disable this();
 	@disable this(this);
@@ -130,11 +133,12 @@ struct OutputPacket {
 
 	ubyte[] data() @trusted {
 		check(0);
-		assert(implicit + pos <= buf.length);
+		assert(implicit + pos <= buf.length, "Packet overflow");
 		*cast(uint*)(buf.ptr + implicit - 4) = native(pos + 4);
 		return buf[0 .. implicit + pos];
 	}
 
+	/++ Format current packet buffer with length prefix and return payload bytes. +/
 	mixin OutputPacketMethods;
 
 private:
@@ -149,15 +153,21 @@ private:
 
 package:
 
+/++ Threshold used to choose alloca versus heap allocation for packet buffers. +/
 enum LargePacketSize = 32 * 1024;
 
+/++ Input and output protocol message-type namespaces. +/
 alias IMT = InputMessageType,
 OMT = OutputMessageType;
 
+/++ Allocate and initialize an output packet with the requested capacity. +/
 template Output(alias n, Args...) {
 	import core.stdc.stdlib;
 
-	auto buf = cast(ubyte*)(n > LargePacketSize ? malloc(n) : alloca(n));
+	// Use a stack buffer for small packets (alloca is rejected by DMD when
+	// exception handling is active) and heap allocation above the threshold.
+	ubyte[LargePacketSize] small = void;
+	auto buf = n > LargePacketSize ? cast(ubyte*)malloc(n) : small[0 .. n].ptr;
 	auto op = OutputPacket(Args, buf[0 .. n]);
 }
 

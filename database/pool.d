@@ -5,10 +5,29 @@ import std.concurrency;
 import std.datetime;
 import std.exception : enforce;
 
+/++ Generic connection-provider factory and lifecycle manager for pooled connections. +/
 final class ConnectionProvider(Connection, alias flags) {
 	private alias ConnectionPool = typeof(this),
 	Flags = typeof(cast()flags);
 
+/++ Return a singleton connection-provider for the given endpoint and settings.
+
+The first invocation creates the pool actor lazily.
+Subsequent calls return the same shared provider.
+
+Params:
+	host = Database host to connect to.
+	user = Username for new connections.
+	password = Password for authentication.
+	database = Default database/schema.
+	port = Server port.
+	maxConnections = Maximum number of pooled connections.
+	initialConnections = Number of connections to create initially.
+	incrementalConnections = Number of connections to create when the pool needs growth.
+	waitTime = How long to wait for a free connection in wait mode.
+	caps = Extra capability flags passed to connection construction.
+Returns: A shared `ConnectionProvider` instance.
++/
 	static getInstance(string host, string user, string password, string database,
 		ushort port = flags ? 3306 : 5432, uint maxConnections = 10, uint initialConnections = 3,
 		uint incrementalConnections = 3, Duration waitTime = 5.seconds, Flags caps = flags)
@@ -24,6 +43,7 @@ final class ConnectionProvider(Connection, alias flags) {
 		return _instance;
 	}
 
+	/++ Start the provider by spawning the internal pool worker actor. +/
 	private this(string host, string user, string password, string database, ushort port,
 		uint maxConnections, uint initialConnections, uint incrementalConnections, Duration waitTime,
 		Flags caps) shared {
@@ -47,6 +67,15 @@ final class ConnectionProvider(Connection, alias flags) {
 		_instantiated = false;
 	}
 
+	/++ Get a connection from the pool.
+
+If no free connection is available, this call waits until the configured
+`waitTime` expires and then returns `null`.
+
+Params:
+	waitTime = Optional override for waiting for a free connection.
+Returns: A pooled connection, or `null` if the pool is busy.
++/
 	Connection getConnection(Duration waitTime = 5.seconds) shared {
 		(cast()_pool).send(RequestConnection(thisTid));
 		Connection conn;
@@ -66,6 +95,14 @@ final class ConnectionProvider(Connection, alias flags) {
 		return conn;
 	}
 
+	/++ Return a connection to the pool.
+
+The method validates that the connection belongs to this pool and is outside
+an active transaction before returning it.
+
+Params:
+	conn = The connection to release.
++/
 	void releaseConnection(ref Connection conn) {
 		enforce(conn.pooled, "This connection is not a managed connection in the pool.");
 		enforce(!conn.inTransaction, "This connection also has uncommitted or unrollbacked transaction.");
@@ -177,7 +214,7 @@ private:
 				if (Clock.currTime - start >= _waitTime)
 					break;
 
-				Thread.sleep(100.msecs);
+				Thread.sleep(50.msecs);
 			}
 
 			req.tid.send(ConnectionBusy);
